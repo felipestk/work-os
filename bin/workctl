@@ -1,0 +1,866 @@
+#!/usr/bin/env python3
+import argparse
+import hashlib
+import json
+import os
+import re
+import sqlite3
+from datetime import datetime, timezone
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_WORKSPACE = Path(os.environ.get('OPENCLAW_WORKSPACE', str(Path.home() / '.openclaw' / 'workspace'))).expanduser()
+DB_PATH = Path(os.environ.get('WORKCTL_DB_PATH', str(DEFAULT_WORKSPACE / 'ops' / 'workos' / 'workos.db'))).expanduser()
+SCHEMA_PATH = Path(os.environ.get('WORKCTL_SCHEMA_PATH', str(ROOT / 'schema' / 'workos.sql'))).expanduser()
+PROJECTS_ROOT = Path(os.environ.get('WORKCTL_PROJECTS_ROOT', str(DEFAULT_WORKSPACE / 'work' / 'projects'))).expanduser()
+CUSTOMERS_ROOT = Path(os.environ.get('WORKCTL_CUSTOMERS_ROOT', str(DEFAULT_WORKSPACE / 'work' / 'customers'))).expanduser()
+PROJECT_ID_RE = re.compile(r'^PR\d{4}$')
+
+ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+OFFER_SALT = 8731
+
+
+def now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+
+
+def slugify(text: str) -> str:
+    text = text.lower().strip()
+    text = re.sub(r'[^a-z0-9]+', '-', text)
+    text = re.sub(r'-+', '-', text).strip('-')
+    return text or 'item'
+
+
+def connect() -> sqlite3.Connection:
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    conn.execute('PRAGMA foreign_keys=ON')
+    return conn
+
+
+def init_db(conn: sqlite3.Connection) -> None:
+    PROJECTS_ROOT.mkdir(parents=True, exist_ok=True)
+    CUSTOMERS_ROOT.mkdir(parents=True, exist_ok=True)
+    conn.executescript(SCHEMA_PATH.read_text(encoding='utf-8'))
+    conn.commit()
+
+
+def print_rows(rows, table=False):
+    if isinstance(rows, dict):
+        rows = [rows]
+    if not table:
+        print(json.dumps(rows, indent=2, ensure_ascii=False))
+        return
+    if not rows:
+        print('(no rows)')
+        return
+    cols = list(rows[0].keys())
+    widths = {c: len(c) for c in cols}
+    for r in rows:
+        for c in cols:
+            widths[c] = max(widths[c], len(str(r.get(c, ''))))
+    print(' | '.join(c.ljust(widths[c]) for c in cols))
+    print('-+-'.join('-' * widths[c] for c in cols))
+    for r in rows:
+        print(' | '.join(str(r.get(c, '')).ljust(widths[c]) for c in cols))
+
+
+def next_customer_code(conn):
+    row = conn.execute("SELECT customer_code FROM customers ORDER BY id DESC LIMIT 1").fetchone()
+    if not row:
+        return 'CUST0001'
+    return f"CUST{int(row['customer_code'][4:]) + 1:04d}"
+
+
+def next_project_id(conn):
+    row = conn.execute("SELECT id FROM projects ORDER BY id DESC LIMIT 1").fetchone()
+    if not row:
+        return 'PR0001'
+    return f"PR{int(row['id'][2:]) + 1:04d}"
+
+
+def encode_offer_code(seq: int) -> str:
+    n = (seq * 2654435761) ^ OFFER_SALT
+    if n <= 0:
+        n = seq + OFFER_SALT
+    chars = []
+    base = len(ALPHABET)
+    while n > 0:
+        n, r = divmod(n, base)
+        chars.append(ALPHABET[r])
+    code = ''.join(reversed(chars)) or 'A'
+    return f"Q{code[-8:]:>8}".replace(' ', 'X')
+
+
+def calc_line_totals(quantity: float, unit_price: float, tax_rate: float | None):
+    if quantity <= 0:
+        raise ValueError('quantity must be > 0')
+    if unit_price < 0:
+        raise ValueError('unit-price must be >= 0')
+    if tax_rate is not None and tax_rate < 0:
+        raise ValueError('tax-rate must be >= 0')
+    subtotal = round(quantity * unit_price, 2)
+    tax = round(subtotal * ((tax_rate or 0.0) / 100.0), 2)
+    total = round(subtotal + tax, 2)
+    return subtotal, tax, total
+
+
+def compute_dedup_hash(*parts):
+    key = '|'.join(str(p or '') for p in parts)
+    return hashlib.sha256(key.encode('utf-8')).hexdigest()
+
+
+def require_customer(conn, customer_ref):
+    row = conn.execute(
+        "SELECT * FROM customers WHERE customer_code = ? OR name = ?",
+        (customer_ref, customer_ref),
+    ).fetchone()
+    if not row:
+        raise ValueError(f"Unknown customer: {customer_ref}")
+    return row
+
+
+def require_project(conn, project_id):
+    if not PROJECT_ID_RE.match(project_id):
+        raise ValueError('project must match PR0001 format')
+    row = conn.execute(
+        "SELECT p.*, c.customer_code, c.name AS customer_name FROM projects p JOIN customers c ON c.id = p.customer_id WHERE p.id = ?",
+        (project_id,),
+    ).fetchone()
+    if not row:
+        raise ValueError(f"Unknown project: {project_id}")
+    return row
+
+
+def require_offer(conn, offer_ref):
+    row = conn.execute(
+        "SELECT o.*, c.name AS customer_name, p.title AS project_title FROM offers o JOIN customers c ON c.id=o.customer_id LEFT JOIN projects p ON p.id=o.project_id WHERE o.offer_code = ?",
+        (offer_ref,),
+    ).fetchone()
+    if not row:
+        raise ValueError(f"Unknown offer: {offer_ref}")
+    return row
+
+
+def cmd_init(_args):
+    with connect() as conn:
+        init_db(conn)
+    print(json.dumps({'ok': True, 'db': str(DB_PATH), 'schema': str(SCHEMA_PATH), 'workspace': str(DEFAULT_WORKSPACE)}))
+
+
+def cmd_doctor(_args):
+    with connect() as conn:
+        init_db(conn)
+        counts = {
+            'customers': conn.execute('SELECT COUNT(*) c FROM customers').fetchone()['c'],
+            'contacts': conn.execute('SELECT COUNT(*) c FROM contacts').fetchone()['c'],
+            'projects': conn.execute('SELECT COUNT(*) c FROM projects').fetchone()['c'],
+            'project_events': conn.execute('SELECT COUNT(*) c FROM project_events').fetchone()['c'],
+            'offers': conn.execute('SELECT COUNT(*) c FROM offers').fetchone()['c'],
+            'offer_versions': conn.execute('SELECT COUNT(*) c FROM offer_versions').fetchone()['c'],
+            'offer_line_items': conn.execute('SELECT COUNT(*) c FROM offer_line_items').fetchone()['c'],
+            'activities': conn.execute('SELECT COUNT(*) c FROM activities').fetchone()['c'],
+        }
+    print(json.dumps({'ok': True, 'counts': counts, 'db': str(DB_PATH), 'projects_root': str(PROJECTS_ROOT), 'customers_root': str(CUSTOMERS_ROOT), 'workspace': str(DEFAULT_WORKSPACE)}, indent=2))
+
+
+def cmd_customer_create(args):
+    with connect() as conn:
+        init_db(conn)
+        customer_code = next_customer_code(conn)
+        conn.execute(
+            """
+            INSERT INTO customers(customer_code, customer_type, name, legal_name, website, industry, country, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (customer_code, args.type, args.name, args.legal_name, args.website, args.industry, args.country, args.notes),
+        )
+        (CUSTOMERS_ROOT / customer_code).mkdir(parents=True, exist_ok=True)
+        conn.commit()
+    print(json.dumps({'customer_code': customer_code, 'name': args.name, 'type': args.type}))
+
+
+def cmd_customer_list(args):
+    with connect() as conn:
+        init_db(conn)
+        q = 'SELECT customer_code, customer_type, name, status, updated_at FROM customers'
+        params = []
+        if args.keyword:
+            q += ' WHERE name LIKE ? OR notes LIKE ?'
+            k = f'%{args.keyword}%'
+            params += [k, k]
+        q += ' ORDER BY updated_at DESC LIMIT ?'
+        params.append(args.limit)
+        rows = [dict(r) for r in conn.execute(q, params)]
+    print_rows(rows, table=args.table)
+
+
+def cmd_customer_show(args):
+    with connect() as conn:
+        init_db(conn)
+        row = require_customer(conn, args.customer)
+    print(json.dumps(dict(row), indent=2, ensure_ascii=False))
+
+
+def cmd_contact_add(args):
+    with connect() as conn:
+        init_db(conn)
+        customer = require_customer(conn, args.customer)
+        cur = conn.execute(
+            """
+            INSERT INTO contacts(customer_id, first_name, last_name, role, email, phone, linkedin, is_primary, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (customer['id'], args.first_name, args.last_name, args.role, args.email, args.phone, args.linkedin, 1 if args.primary else 0, args.notes),
+        )
+        conn.commit()
+    print(json.dumps({'id': cur.lastrowid, 'customer': customer['name']}))
+
+
+def cmd_contact_list(args):
+    with connect() as conn:
+        init_db(conn)
+        customer = require_customer(conn, args.customer)
+        rows = [dict(r) for r in conn.execute(
+            'SELECT id, first_name, last_name, role, email, phone, linkedin, is_primary FROM contacts WHERE customer_id=? ORDER BY is_primary DESC, id DESC',
+            (customer['id'],),
+        )]
+    print_rows(rows, table=args.table)
+
+
+def cmd_project_create(args):
+    with connect() as conn:
+        init_db(conn)
+        customer = require_customer(conn, args.customer)
+        project_id = next_project_id(conn)
+        slug = slugify(args.slug or args.title)
+        folder = PROJECTS_ROOT / f'{project_id}-{slug}'
+        folder.mkdir(parents=True, exist_ok=True)
+        conn.execute(
+            """
+            INSERT INTO projects(id, slug, customer_id, title, status, objective, summary, folder_path, owner)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (project_id, slug, customer['id'], args.title, args.status, args.objective, args.summary, str(folder), args.owner),
+        )
+        conn.execute(
+            "INSERT INTO project_events(project_id, event_type, note, metadata_json) VALUES (?, 'created', ?, ?)",
+            (project_id, args.note or 'Project created', json.dumps({'actor': 'workctl', 'timestamp': now_iso()})),
+        )
+        for alias in args.alias:
+            conn.execute(
+                "INSERT OR IGNORE INTO aliases(entity_type, entity_ref, alias, alias_type) VALUES ('project', ?, ?, 'keyword')",
+                (project_id, alias),
+            )
+        conn.commit()
+    print(json.dumps({'id': project_id, 'title': args.title, 'customer': customer['name'], 'status': args.status, 'folder': str(folder)}))
+
+
+def cmd_project_list(args):
+    with connect() as conn:
+        init_db(conn)
+        q = """
+        SELECT p.id, p.title, c.name AS customer, p.status, p.updated_at, p.folder_path
+        FROM projects p
+        JOIN customers c ON c.id = p.customer_id
+        """
+        params = []
+        where = []
+        if args.customer:
+            where.append('(c.customer_code = ? OR c.name = ?)')
+            params += [args.customer, args.customer]
+        if args.active:
+            where.append("p.status IN ('active','blocked')")
+        if where:
+            q += ' WHERE ' + ' AND '.join(where)
+        q += ' ORDER BY p.updated_at DESC LIMIT ?'
+        params.append(args.limit)
+        rows = [dict(r) for r in conn.execute(q, params)]
+    print_rows(rows, table=args.table)
+
+
+def cmd_project_show(args):
+    with connect() as conn:
+        init_db(conn)
+        row = require_project(conn, args.project)
+    print(json.dumps(dict(row), indent=2, ensure_ascii=False))
+
+
+def cmd_project_event(args):
+    with connect() as conn:
+        init_db(conn)
+        require_project(conn, args.project)
+        metadata = json.loads(args.metadata) if args.metadata else {}
+        metadata.setdefault('actor', 'workctl')
+        conn.execute(
+            'INSERT INTO project_events(project_id, event_type, note, metadata_json) VALUES (?, ?, ?, ?)',
+            (args.project, args.type, args.note, json.dumps(metadata)),
+        )
+        conn.commit()
+    print(json.dumps({'ok': True, 'project': args.project, 'type': args.type}))
+
+
+def cmd_project_status(args):
+    with connect() as conn:
+        init_db(conn)
+        project = require_project(conn, args.project)
+        conn.execute('UPDATE projects SET status = ? WHERE id = ?', (args.status, args.project))
+        conn.execute(
+            "INSERT INTO project_events(project_id, event_type, note, metadata_json) VALUES (?, 'status_changed', ?, ?)",
+            (args.project, args.note or f"Status set to {args.status}", json.dumps({'old_status': project['status'], 'new_status': args.status, 'actor': 'workctl'})),
+        )
+        conn.commit()
+    print(json.dumps({'id': args.project, 'old_status': project['status'], 'new_status': args.status}))
+
+
+def cmd_activity_add(args):
+    with connect() as conn:
+        init_db(conn)
+        customer = require_customer(conn, args.customer)
+        if args.project:
+            require_project(conn, args.project)
+        offer_id = None
+        if args.offer:
+            offer = require_offer(conn, args.offer)
+            offer_id = offer['id']
+        happened_at = args.happened_at or now_iso()
+        dedup_hash = compute_dedup_hash(customer['id'], args.project, args.offer, args.type, args.direction, args.subject, args.body, args.source_ref, args.message_id, args.thread_id, happened_at)
+        cur = conn.execute(
+            """
+            INSERT OR IGNORE INTO activities(customer_id, project_id, offer_id, contact_id, activity_type, direction, subject, body, source_ref, thread_id, message_id, dedup_hash, happened_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (customer['id'], args.project, offer_id, args.contact_id, args.type, args.direction, args.subject, args.body, args.source_ref, args.thread_id, args.message_id, dedup_hash, happened_at),
+        )
+        conn.commit()
+    if cur.rowcount == 0:
+        print(json.dumps({'ok': True, 'duplicate': True}))
+    else:
+        print(json.dumps({'id': cur.lastrowid, 'customer': customer['name'], 'type': args.type}))
+
+
+def cmd_activity_list(args):
+    with connect() as conn:
+        init_db(conn)
+        q = """
+        SELECT a.id, c.name AS customer, a.project_id, o.offer_code, a.activity_type, a.direction, a.subject, a.happened_at
+        FROM activities a
+        JOIN customers c ON c.id = a.customer_id
+        LEFT JOIN offers o ON o.id = a.offer_id
+        """
+        where = []
+        params = []
+        if args.customer:
+            where.append('(c.customer_code = ? OR c.name = ?)')
+            params += [args.customer, args.customer]
+        if args.project:
+            where.append('a.project_id = ?')
+            params.append(args.project)
+        if args.offer:
+            where.append('o.offer_code = ?')
+            params.append(args.offer)
+        if args.type:
+            where.append('a.activity_type = ?')
+            params.append(args.type)
+        if where:
+            q += ' WHERE ' + ' AND '.join(where)
+        q += ' ORDER BY a.happened_at DESC LIMIT ?'
+        params.append(args.limit)
+        rows = [dict(r) for r in conn.execute(q, params)]
+    print_rows(rows, table=args.table)
+
+
+def make_offer_snapshot(conn, offer_id, version_no):
+    offer = conn.execute('SELECT * FROM offers WHERE id=?', (offer_id,)).fetchone()
+    items = [dict(r) for r in conn.execute(
+        'SELECT billing_type, name, description, quantity, unit, unit_price, tax_rate, line_subtotal, line_tax, line_total, currency, sort_order FROM offer_line_items WHERE offer_id=? AND version_no=? ORDER BY sort_order, id',
+        (offer_id, version_no),
+    )]
+    return {
+        'offer_code': offer['offer_code'],
+        'title': offer['title'],
+        'status': offer['status'],
+        'currency': offer['currency'],
+        'amount_subtotal': offer['amount_subtotal'],
+        'amount_tax': offer['amount_tax'],
+        'amount_total': offer['amount_total'],
+        'sent_at': offer['sent_at'],
+        'valid_until': offer['valid_until'],
+        'decision_at': offer['decision_at'],
+        'summary': offer['summary'],
+        'assumptions': offer['assumptions'],
+        'line_items': items,
+    }
+
+
+def write_offer_version(conn, offer_id, version_no, summary):
+    conn.execute(
+        'INSERT INTO offer_versions(offer_id, version_no, change_summary, snapshot_json) VALUES (?, ?, ?, ?)',
+        (offer_id, version_no, summary, json.dumps(make_offer_snapshot(conn, offer_id, version_no), ensure_ascii=False)),
+    )
+
+
+def recalc_offer_totals(conn, offer_id, version_no):
+    row = conn.execute(
+        'SELECT COALESCE(SUM(line_subtotal),0) AS subtotal, COALESCE(SUM(line_tax),0) AS tax, COALESCE(SUM(line_total),0) AS total FROM offer_line_items WHERE offer_id=? AND version_no=?',
+        (offer_id, version_no),
+    ).fetchone()
+    subtotal = float(row['subtotal'])
+    tax = float(row['tax'])
+    total = float(row['total'])
+    current = conn.execute('SELECT current_version_no FROM offers WHERE id=?', (offer_id,)).fetchone()
+    if current and int(current['current_version_no']) == int(version_no):
+        conn.execute('UPDATE offers SET amount_subtotal=?, amount_tax=?, amount_total=? WHERE id=?', (subtotal, tax, total, offer_id))
+    return subtotal, tax, total
+
+
+def cmd_offer_create(args):
+    with connect() as conn:
+        init_db(conn)
+        customer = require_customer(conn, args.customer)
+        if args.project:
+            require_project(conn, args.project)
+        cur = conn.execute(
+            """
+            INSERT INTO offers(offer_code, customer_id, project_id, contact_id, title, status, currency, amount_subtotal, amount_tax, amount_total, valid_until, summary, assumptions)
+            VALUES ('PENDING', ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (customer['id'], args.project, args.contact_id, args.title, args.currency, args.subtotal, args.tax, args.total, args.valid_until, args.summary, args.assumptions),
+        )
+        offer_id = cur.lastrowid
+        offer_code = encode_offer_code(offer_id)
+        conn.execute('UPDATE offers SET offer_code = ? WHERE id = ?', (offer_code, offer_id))
+        write_offer_version(conn, offer_id, 1, args.note or 'Initial version')
+        conn.commit()
+    print(json.dumps({'offer_code': offer_code, 'customer': customer['name'], 'project': args.project, 'version': 1}))
+
+
+def cmd_offer_list(args):
+    with connect() as conn:
+        init_db(conn)
+        q = """
+        SELECT o.offer_code, c.name AS customer, o.project_id, o.title, o.status, o.currency, o.amount_total, o.current_version_no, o.updated_at
+        FROM offers o JOIN customers c ON c.id = o.customer_id
+        """
+        where = []
+        params = []
+        if args.customer:
+            where.append('(c.customer_code = ? OR c.name = ?)')
+            params += [args.customer, args.customer]
+        if args.project:
+            where.append('o.project_id = ?')
+            params.append(args.project)
+        if args.status:
+            where.append('o.status = ?')
+            params.append(args.status)
+        if where:
+            q += ' WHERE ' + ' AND '.join(where)
+        q += ' ORDER BY o.updated_at DESC LIMIT ?'
+        params.append(args.limit)
+        rows = [dict(r) for r in conn.execute(q, params)]
+    print_rows(rows, table=args.table)
+
+
+def cmd_offer_show(args):
+    with connect() as conn:
+        init_db(conn)
+        offer = require_offer(conn, args.offer)
+        if args.version:
+            row = conn.execute('SELECT version_no, change_summary, created_at, snapshot_json FROM offer_versions WHERE offer_id=? AND version_no=?', (offer['id'], args.version)).fetchone()
+            if not row:
+                raise ValueError('Version not found')
+            out = dict(row)
+            out['snapshot'] = json.loads(out.pop('snapshot_json'))
+        else:
+            out = dict(offer)
+    print(json.dumps(out, indent=2, ensure_ascii=False))
+
+
+def cmd_offer_versions(args):
+    with connect() as conn:
+        init_db(conn)
+        offer = require_offer(conn, args.offer)
+        rows = [dict(r) for r in conn.execute('SELECT version_no, change_summary, created_at FROM offer_versions WHERE offer_id=? ORDER BY version_no DESC', (offer['id'],))]
+    print_rows(rows, table=args.table)
+
+
+def cmd_offer_status(args):
+    with connect() as conn:
+        init_db(conn)
+        offer = require_offer(conn, args.offer)
+        conn.execute('UPDATE offers SET status=?, decision_at=? WHERE id=?', (args.status, args.decision_at, offer['id']))
+        conn.commit()
+    print(json.dumps({'offer': args.offer, 'status': args.status}))
+
+
+def cmd_offer_revise(args):
+    with connect() as conn:
+        init_db(conn)
+        offer = require_offer(conn, args.offer)
+        previous_version = int(offer['current_version_no'])
+        new_version = previous_version + 1
+        conn.execute(
+            """
+            UPDATE offers SET title=?, status='revised', currency=?, amount_subtotal=?, amount_tax=?, amount_total=?, valid_until=?, summary=?, assumptions=?, current_version_no=?
+            WHERE id=?
+            """,
+            (
+                args.title if args.title is not None else offer['title'],
+                args.currency if args.currency is not None else offer['currency'],
+                args.subtotal if args.subtotal is not None else offer['amount_subtotal'],
+                args.tax if args.tax is not None else offer['amount_tax'],
+                args.total if args.total is not None else offer['amount_total'],
+                args.valid_until if args.valid_until is not None else offer['valid_until'],
+                args.summary if args.summary is not None else offer['summary'],
+                args.assumptions if args.assumptions is not None else offer['assumptions'],
+                new_version,
+                offer['id'],
+            ),
+        )
+        prev_items = conn.execute('SELECT billing_type, name, description, quantity, unit, unit_price, tax_rate, line_subtotal, line_tax, line_total, currency, sort_order FROM offer_line_items WHERE offer_id=? AND version_no=? ORDER BY sort_order, id', (offer['id'], previous_version)).fetchall()
+        for item in prev_items:
+            conn.execute(
+                'INSERT INTO offer_line_items(offer_id, version_no, billing_type, name, description, quantity, unit, unit_price, tax_rate, line_subtotal, line_tax, line_total, currency, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                (offer['id'], new_version, item['billing_type'], item['name'], item['description'], item['quantity'], item['unit'], item['unit_price'], item['tax_rate'], item['line_subtotal'], item['line_tax'], item['line_total'], item['currency'], item['sort_order']),
+            )
+        recalc_offer_totals(conn, offer['id'], new_version)
+        write_offer_version(conn, offer['id'], new_version, args.note or 'Offer revised')
+        conn.commit()
+    print(json.dumps({'offer': args.offer, 'version': new_version}))
+
+
+def cmd_offer_item_add(args):
+    with connect() as conn:
+        init_db(conn)
+        offer = require_offer(conn, args.offer)
+        version_no = args.version or int(offer['current_version_no'])
+        subtotal, tax, total = calc_line_totals(args.quantity, args.unit_price, args.tax_rate)
+        currency = args.currency or offer['currency']
+        cur = conn.execute(
+            'INSERT INTO offer_line_items(offer_id, version_no, billing_type, name, description, quantity, unit, unit_price, tax_rate, line_subtotal, line_tax, line_total, currency, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            (offer['id'], version_no, args.billing_type, args.name, args.description, args.quantity, args.unit, args.unit_price, args.tax_rate, subtotal, tax, total, currency, args.sort_order),
+        )
+        rs, rt, rg = recalc_offer_totals(conn, offer['id'], version_no)
+        conn.commit()
+    print(json.dumps({'ok': True, 'item_id': cur.lastrowid, 'offer': args.offer, 'version': version_no, 'line_total': total, 'offer_totals': {'subtotal': rs, 'tax': rt, 'total': rg}}))
+
+
+def cmd_offer_item_list(args):
+    with connect() as conn:
+        init_db(conn)
+        offer = require_offer(conn, args.offer)
+        version_no = args.version or int(offer['current_version_no'])
+        rows = [dict(r) for r in conn.execute(
+            'SELECT id, version_no, billing_type, name, description, quantity, unit, unit_price, tax_rate, line_subtotal, line_tax, line_total, currency, sort_order FROM offer_line_items WHERE offer_id=? AND version_no=? ORDER BY billing_type, sort_order, id',
+            (offer['id'], version_no),
+        )]
+    print_rows(rows, table=args.table)
+
+
+def cmd_offer_item_update(args):
+    with connect() as conn:
+        init_db(conn)
+        row = conn.execute('SELECT * FROM offer_line_items WHERE id=?', (args.item_id,)).fetchone()
+        if not row:
+            raise ValueError('Item not found')
+        quantity = args.quantity if args.quantity is not None else row['quantity']
+        unit_price = args.unit_price if args.unit_price is not None else row['unit_price']
+        tax_rate = args.tax_rate if args.tax_rate is not None else row['tax_rate']
+        subtotal, tax, total = calc_line_totals(float(quantity), float(unit_price), float(tax_rate) if tax_rate is not None else None)
+        conn.execute(
+            'UPDATE offer_line_items SET billing_type=?, name=?, description=?, quantity=?, unit=?, unit_price=?, tax_rate=?, line_subtotal=?, line_tax=?, line_total=?, sort_order=? WHERE id=?',
+            (
+                args.billing_type or row['billing_type'],
+                args.name or row['name'],
+                args.description if args.description is not None else row['description'],
+                quantity,
+                args.unit if args.unit is not None else row['unit'],
+                unit_price,
+                tax_rate,
+                subtotal,
+                tax,
+                total,
+                args.sort_order if args.sort_order is not None else row['sort_order'],
+                args.item_id,
+            ),
+        )
+        rs, rt, rg = recalc_offer_totals(conn, row['offer_id'], row['version_no'])
+        conn.commit()
+    print(json.dumps({'ok': True, 'item_id': args.item_id, 'line_total': total, 'offer_totals': {'subtotal': rs, 'tax': rt, 'total': rg}}))
+
+
+def cmd_offer_item_remove(args):
+    with connect() as conn:
+        init_db(conn)
+        row = conn.execute('SELECT offer_id, version_no FROM offer_line_items WHERE id=?', (args.item_id,)).fetchone()
+        if not row:
+            raise ValueError('Item not found')
+        conn.execute('DELETE FROM offer_line_items WHERE id=?', (args.item_id,))
+        rs, rt, rg = recalc_offer_totals(conn, row['offer_id'], row['version_no'])
+        conn.commit()
+    print(json.dumps({'ok': True, 'item_id': args.item_id, 'offer_totals': {'subtotal': rs, 'tax': rt, 'total': rg}}))
+
+
+def cmd_offer_totals_recalc(args):
+    with connect() as conn:
+        init_db(conn)
+        offer = require_offer(conn, args.offer)
+        version_no = args.version or int(offer['current_version_no'])
+        rs, rt, rg = recalc_offer_totals(conn, offer['id'], version_no)
+        conn.commit()
+    print(json.dumps({'ok': True, 'offer': args.offer, 'version': version_no, 'subtotal': rs, 'tax': rt, 'total': rg}))
+
+
+def cmd_search(args):
+    with connect() as conn:
+        init_db(conn)
+        like = f"%{args.keyword}%"
+        rows = []
+        for r in conn.execute('SELECT customer_code AS ref, name AS label, "customer" AS entity, updated_at AS at FROM customers WHERE name LIKE ? OR notes LIKE ? LIMIT 20', (like, like)):
+            rows.append(dict(r))
+        for r in conn.execute('SELECT id AS ref, title AS label, "project" AS entity, updated_at AS at FROM projects WHERE title LIKE ? OR objective LIKE ? OR summary LIKE ? LIMIT 20', (like, like, like)):
+            rows.append(dict(r))
+        for r in conn.execute('SELECT offer_code AS ref, title AS label, "offer" AS entity, updated_at AS at FROM offers WHERE title LIKE ? OR summary LIKE ? OR assumptions LIKE ? LIMIT 20', (like, like, like)):
+            rows.append(dict(r))
+        for r in conn.execute('SELECT a.id AS ref, COALESCE(a.subject, substr(a.body,1,80)) AS label, "activity" AS entity, a.happened_at AS at FROM activities a WHERE a.subject LIKE ? OR a.body LIKE ? LIMIT 20', (like, like)):
+            rows.append(dict(r))
+    rows.sort(key=lambda x: (x.get('at') or ''), reverse=True)
+    print_rows(rows[:args.limit], table=args.table)
+
+
+def build_parser():
+    p = argparse.ArgumentParser(description='Work OS CLI scaffold')
+    sub = p.add_subparsers(dest='cmd', required=True)
+
+    sp = sub.add_parser('init')
+    sp.set_defaults(func=cmd_init)
+
+    sp = sub.add_parser('doctor')
+    sp.set_defaults(func=cmd_doctor)
+
+    sp = sub.add_parser('search')
+    sp.add_argument('--keyword', required=True)
+    sp.add_argument('--limit', type=int, default=50)
+    sp.add_argument('--table', action='store_true')
+    sp.set_defaults(func=cmd_search)
+
+    customer = sub.add_parser('customer')
+    csub = customer.add_subparsers(dest='sub', required=True)
+    sp = csub.add_parser('create')
+    sp.add_argument('--type', required=True, choices=['company', 'private'])
+    sp.add_argument('--name', required=True)
+    sp.add_argument('--legal-name')
+    sp.add_argument('--website')
+    sp.add_argument('--industry')
+    sp.add_argument('--country')
+    sp.add_argument('--notes')
+    sp.set_defaults(func=cmd_customer_create)
+
+    sp = csub.add_parser('list')
+    sp.add_argument('--keyword')
+    sp.add_argument('--limit', type=int, default=50)
+    sp.add_argument('--table', action='store_true')
+    sp.set_defaults(func=cmd_customer_list)
+
+    sp = csub.add_parser('show')
+    sp.add_argument('--customer', required=True)
+    sp.set_defaults(func=cmd_customer_show)
+
+    contact = sub.add_parser('contact')
+    ctsub = contact.add_subparsers(dest='sub', required=True)
+    sp = ctsub.add_parser('add')
+    sp.add_argument('--customer', required=True)
+    sp.add_argument('--first-name')
+    sp.add_argument('--last-name')
+    sp.add_argument('--role')
+    sp.add_argument('--email')
+    sp.add_argument('--phone')
+    sp.add_argument('--linkedin')
+    sp.add_argument('--primary', action='store_true')
+    sp.add_argument('--notes')
+    sp.set_defaults(func=cmd_contact_add)
+
+    sp = ctsub.add_parser('list')
+    sp.add_argument('--customer', required=True)
+    sp.add_argument('--table', action='store_true')
+    sp.set_defaults(func=cmd_contact_list)
+
+    project = sub.add_parser('project')
+    psub = project.add_subparsers(dest='sub', required=True)
+    sp = psub.add_parser('create')
+    sp.add_argument('--customer', required=True)
+    sp.add_argument('--title', required=True)
+    sp.add_argument('--objective')
+    sp.add_argument('--summary')
+    sp.add_argument('--slug')
+    sp.add_argument('--status', default='active', choices=['active', 'blocked', 'completed', 'archived'])
+    sp.add_argument('--owner')
+    sp.add_argument('--alias', action='append', default=[])
+    sp.add_argument('--note')
+    sp.set_defaults(func=cmd_project_create)
+
+    sp = psub.add_parser('list')
+    sp.add_argument('--customer')
+    sp.add_argument('--active', action='store_true')
+    sp.add_argument('--limit', type=int, default=50)
+    sp.add_argument('--table', action='store_true')
+    sp.set_defaults(func=cmd_project_list)
+
+    sp = psub.add_parser('show')
+    sp.add_argument('--project', required=True)
+    sp.set_defaults(func=cmd_project_show)
+
+    sp = psub.add_parser('event')
+    sp.add_argument('--project', required=True)
+    sp.add_argument('--type', default='note', choices=['created', 'updated', 'note', 'blocked', 'completed', 'reopened', 'status_changed', 'artifact_added', 'subagent_handoff'])
+    sp.add_argument('--note', required=True)
+    sp.add_argument('--metadata')
+    sp.set_defaults(func=cmd_project_event)
+
+    sp = psub.add_parser('status')
+    sp.add_argument('--project', required=True)
+    sp.add_argument('--status', required=True, choices=['active', 'blocked', 'completed', 'archived'])
+    sp.add_argument('--note')
+    sp.set_defaults(func=cmd_project_status)
+
+    activity = sub.add_parser('activity')
+    asub = activity.add_subparsers(dest='sub', required=True)
+    sp = asub.add_parser('add')
+    sp.add_argument('--customer', required=True)
+    sp.add_argument('--project')
+    sp.add_argument('--offer')
+    sp.add_argument('--contact-id', type=int)
+    sp.add_argument('--type', required=True, choices=['note', 'email', 'call', 'meeting', 'whatsapp', 'telegram', 'decision', 'summary', 'task', 'other'])
+    sp.add_argument('--direction', choices=['inbound', 'outbound', 'internal'])
+    sp.add_argument('--subject')
+    sp.add_argument('--body', required=True)
+    sp.add_argument('--source-ref')
+    sp.add_argument('--thread-id')
+    sp.add_argument('--message-id')
+    sp.add_argument('--happened-at')
+    sp.set_defaults(func=cmd_activity_add)
+
+    sp = asub.add_parser('list')
+    sp.add_argument('--customer')
+    sp.add_argument('--project')
+    sp.add_argument('--offer')
+    sp.add_argument('--type')
+    sp.add_argument('--limit', type=int, default=50)
+    sp.add_argument('--table', action='store_true')
+    sp.set_defaults(func=cmd_activity_list)
+
+    offer = sub.add_parser('offer')
+    osub = offer.add_subparsers(dest='sub', required=True)
+    sp = osub.add_parser('create')
+    sp.add_argument('--customer', required=True)
+    sp.add_argument('--project')
+    sp.add_argument('--contact-id', type=int)
+    sp.add_argument('--title', required=True)
+    sp.add_argument('--currency', default='EUR')
+    sp.add_argument('--subtotal', type=float)
+    sp.add_argument('--tax', type=float)
+    sp.add_argument('--total', type=float)
+    sp.add_argument('--valid-until')
+    sp.add_argument('--summary')
+    sp.add_argument('--assumptions')
+    sp.add_argument('--note')
+    sp.set_defaults(func=cmd_offer_create)
+
+    sp = osub.add_parser('list')
+    sp.add_argument('--customer')
+    sp.add_argument('--project')
+    sp.add_argument('--status')
+    sp.add_argument('--limit', type=int, default=50)
+    sp.add_argument('--table', action='store_true')
+    sp.set_defaults(func=cmd_offer_list)
+
+    sp = osub.add_parser('show')
+    sp.add_argument('--offer', required=True)
+    sp.add_argument('--version', type=int)
+    sp.set_defaults(func=cmd_offer_show)
+
+    sp = osub.add_parser('versions')
+    sp.add_argument('--offer', required=True)
+    sp.add_argument('--table', action='store_true')
+    sp.set_defaults(func=cmd_offer_versions)
+
+    sp = osub.add_parser('status')
+    sp.add_argument('--offer', required=True)
+    sp.add_argument('--status', required=True, choices=['draft', 'sent', 'accepted', 'rejected', 'expired', 'revised', 'archived'])
+    sp.add_argument('--decision-at')
+    sp.set_defaults(func=cmd_offer_status)
+
+    sp = osub.add_parser('revise')
+    sp.add_argument('--offer', required=True)
+    sp.add_argument('--title')
+    sp.add_argument('--currency')
+    sp.add_argument('--subtotal', type=float)
+    sp.add_argument('--tax', type=float)
+    sp.add_argument('--total', type=float)
+    sp.add_argument('--valid-until')
+    sp.add_argument('--summary')
+    sp.add_argument('--assumptions')
+    sp.add_argument('--note')
+    sp.set_defaults(func=cmd_offer_revise)
+
+    item = osub.add_parser('item')
+    isub = item.add_subparsers(dest='item_sub', required=True)
+
+    sp = isub.add_parser('add')
+    sp.add_argument('--offer', required=True)
+    sp.add_argument('--version', type=int)
+    sp.add_argument('--billing-type', required=True, choices=['one_time', 'recurring'])
+    sp.add_argument('--name', required=True)
+    sp.add_argument('--description')
+    sp.add_argument('--quantity', type=float, default=1.0)
+    sp.add_argument('--unit')
+    sp.add_argument('--unit-price', type=float, required=True)
+    sp.add_argument('--tax-rate', type=float)
+    sp.add_argument('--currency')
+    sp.add_argument('--sort-order', type=int, default=0)
+    sp.set_defaults(func=cmd_offer_item_add)
+
+    sp = isub.add_parser('list')
+    sp.add_argument('--offer', required=True)
+    sp.add_argument('--version', type=int)
+    sp.add_argument('--table', action='store_true')
+    sp.set_defaults(func=cmd_offer_item_list)
+
+    sp = isub.add_parser('update')
+    sp.add_argument('--item-id', type=int, required=True)
+    sp.add_argument('--billing-type', choices=['one_time', 'recurring'])
+    sp.add_argument('--name')
+    sp.add_argument('--description')
+    sp.add_argument('--quantity', type=float)
+    sp.add_argument('--unit')
+    sp.add_argument('--unit-price', type=float)
+    sp.add_argument('--tax-rate', type=float)
+    sp.add_argument('--sort-order', type=int)
+    sp.set_defaults(func=cmd_offer_item_update)
+
+    sp = isub.add_parser('remove')
+    sp.add_argument('--item-id', type=int, required=True)
+    sp.set_defaults(func=cmd_offer_item_remove)
+
+    totals = osub.add_parser('totals')
+    tsub = totals.add_subparsers(dest='totals_sub', required=True)
+    sp = tsub.add_parser('recalc')
+    sp.add_argument('--offer', required=True)
+    sp.add_argument('--version', type=int)
+    sp.set_defaults(func=cmd_offer_totals_recalc)
+
+    return p
+
+
+def main():
+    parser = build_parser()
+    args = parser.parse_args()
+    try:
+        args.func(args)
+    except Exception as e:
+        parser.exit(1, f'ERROR: {e}\n')
+
+
+if __name__ == '__main__':
+    main()
