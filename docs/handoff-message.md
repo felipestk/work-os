@@ -6,7 +6,7 @@ Use this message when sending the repo to another OpenClaw host/operator for ins
 
 I put together a repo for a reusable **Work OS** toolkit/skill for OpenClaw:
 
-**Repo:** `<repo-url>`
+**Repo:** `https://github.com/felipestk/work-os/`
 
 The goal is to give an OpenClaw host a unified workflow for:
 - customers
@@ -26,7 +26,7 @@ Please install it on the target OpenClaw host and make sure both the toolkit **a
 
 ### Install steps
 ```bash
-git clone <repo-url>
+git clone https://github.com/felipestk/work-os/
 cd openclaw-workos
 scripts/install.sh
 source ~/.local/share/openclaw-workos/env.sh
