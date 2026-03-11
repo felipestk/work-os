@@ -8,6 +8,49 @@ WORKSPACE_DIR="${OPENCLAW_WORKSPACE:-$HOME/.openclaw/workspace}"
 WORKSPACE_SKILLS_DIR="${OPENCLAW_WORKSPACE_SKILLS_DIR:-$WORKSPACE_DIR/skills}"
 ENV_FILE="$INSTALL_ROOT/env.sh"
 
+run_as_root() {
+  if [ "$(id -u)" -eq 0 ]; then
+    "$@"
+  elif command -v sudo >/dev/null 2>&1; then
+    sudo "$@"
+  else
+    return 1
+  fi
+}
+
+ensure_sqlite3() {
+  if command -v sqlite3 >/dev/null 2>&1; then
+    return 0
+  fi
+
+  echo "sqlite3 not found. Attempting to install it..."
+
+  if command -v apt-get >/dev/null 2>&1; then
+    run_as_root apt-get update && run_as_root apt-get install -y sqlite3
+  elif command -v dnf >/dev/null 2>&1; then
+    run_as_root dnf install -y sqlite
+  elif command -v yum >/dev/null 2>&1; then
+    run_as_root yum install -y sqlite
+  elif command -v apk >/dev/null 2>&1; then
+    run_as_root apk add --no-cache sqlite
+  elif command -v pacman >/dev/null 2>&1; then
+    run_as_root pacman -Sy --noconfirm sqlite
+  elif command -v brew >/dev/null 2>&1; then
+    brew install sqlite
+  else
+    echo "ERROR: sqlite3 is required but no supported package manager was detected." >&2
+    echo "Please install sqlite3 manually, then rerun scripts/install.sh" >&2
+    exit 1
+  fi
+
+  if ! command -v sqlite3 >/dev/null 2>&1; then
+    echo "ERROR: sqlite3 installation did not succeed. Please install it manually and rerun scripts/install.sh" >&2
+    exit 1
+  fi
+}
+
+ensure_sqlite3
+
 mkdir -p "$INSTALL_ROOT" "$BIN_DIR" "$WORKSPACE_DIR/ops/workos" "$WORKSPACE_DIR/work/projects" "$WORKSPACE_DIR/work/customers" "$WORKSPACE_SKILLS_DIR"
 
 rm -rf "$INSTALL_ROOT/bin" "$INSTALL_ROOT/schema" "$INSTALL_ROOT/skills" "$INSTALL_ROOT/docs" "$INSTALL_ROOT/examples" "$INSTALL_ROOT/tests" "$INSTALL_ROOT/scripts"

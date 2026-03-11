@@ -33,7 +33,10 @@ source ~/.local/share/openclaw-workos/env.sh
 workctl doctor
 ```
 
+The installer checks for `sqlite3` first and attempts to install it automatically if it is missing.
+
 ### Expected install result
+- `sqlite3` available on the host
 - toolkit under `~/.local/share/openclaw-workos`
 - `workctl` available via `~/.local/bin/workctl`
 - runtime DB under `~/.openclaw/workspace/ops/workos/workos.db`

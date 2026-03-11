@@ -25,6 +25,8 @@ This matches OpenClaw's normal skill discovery behavior.
 scripts/install.sh
 ```
 
+The installer checks for `sqlite3` first. If it is missing, it attempts to install it automatically using a supported package manager (`apt-get`, `dnf`, `yum`, `apk`, `pacman`, or `brew`). If that fails, it stops with a clear manual-install instruction.
+
 This installs the repo contents to:
 - `$HOME/.local/share/openclaw-workos`
 

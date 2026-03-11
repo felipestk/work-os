@@ -38,6 +38,7 @@ workctl doctor
 ```
 
 What this does:
+- checks for `sqlite3` and attempts to install it if missing
 - installs toolkit code under `~/.local/share/openclaw-workos`
 - links `workctl` into `~/.local/bin`
 - stores live DB/projects/customers under `~/.openclaw/workspace`
