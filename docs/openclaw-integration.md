@@ -22,6 +22,14 @@ This matters because installation alone gives the host:
 
 But the `AGENTS.md` rule is what makes customer-linked project tracking a mandatory behavior.
 
+## Recommended TOOLS.md integration
+The receiving OpenClaw host should also add the Work OS tooling reference block to its `TOOLS.md`.
+
+Use the exact block from:
+- `docs/tools-snippet.md`
+
+This gives the host a local command reference that matches the installed `workctl` workflow.
+
 ## Recommended short AGENTS.md skill entry
 If the receiving host keeps a short installed-skills list, add a line like:
 

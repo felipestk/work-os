@@ -72,6 +72,7 @@ MIT
 - `docs/skill-packaging.md`
 - `docs/openclaw-integration.md`
 - `docs/agents-policy-snippet.md`
+- `docs/tools-snippet.md`
 - `docs/handoff-message.md`
 - `docs/architecture.md`
 - `docs/cli.md`

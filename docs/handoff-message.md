@@ -44,18 +44,23 @@ The installer checks for `sqlite3` first and attempts to install it automaticall
 - customers under `~/.openclaw/workspace/work/customers`
 - skill installed under `~/.openclaw/workspace/skills/work-os`
 
-## Important: AGENTS.md integration
-Please also add the recommended Work OS policy block to that host’s `AGENTS.md`.
+## Important: AGENTS.md and TOOLS.md integration
+Please also add the recommended Work OS blocks to that host’s `AGENTS.md` and `TOOLS.md`.
 
-Use this file from the repo:
+Use these files from the repo:
 - `docs/agents-policy-snippet.md`
+- `docs/tools-snippet.md`
 
-That part is important because the installer makes the toolkit/skill available, but the `AGENTS.md` block makes customer-linked project tracking a mandatory behavior.
+This matters because:
+- the installer makes the toolkit and skill available
+- the `AGENTS.md` block makes customer-linked project tracking a mandatory behavior
+- the `TOOLS.md` block gives the host a local command/reference guide matching the installed `workctl` workflow
 
 ## Helpful docs
 - `docs/install.md`
 - `docs/openclaw-integration.md`
 - `docs/agents-policy-snippet.md`
+- `docs/tools-snippet.md`
 - `docs/usage.md`
 
 ## Optional validation
