@@ -14,7 +14,7 @@
       <div><dt>status</dt><dd>{{ task.status }}</dd></div>
       <div><dt>priority</dt><dd>{{ task.priority or '—' }}</dd></div>
       <div><dt>assignee</dt><dd>{{ task.assignee or '—' }}</dd></div>
-      <div><dt>due</dt><dd>{{ task.due_at or '—' }}</dd></div>
+      <div><dt>due</dt><dd>{{ task.due_date or '—' }}</dd></div>
       <div><dt>board</dt><dd>{{ task.board }}</dd></div>
       <div><dt>comments</dt><dd>{{ task.comment_count }}</dd></div>
       <div><dt>attachments</dt><dd>{{ task.attachment_count }}</dd></div>
@@ -25,28 +25,61 @@
     <p class="section-kicker">Actions</p>
     <div class="detail-actions">
       {% if task.previous_column %}
-        <form hx-post="/board/tasks/{{ task.id }}/move" hx-target="#board-columns" hx-swap="outerHTML">
+        <form hx-post="/board/tasks/{{ task.id }}/move" hx-target="#board-shell" hx-swap="outerHTML">
           <input type="hidden" name="column_key" value="{{ task.previous_column }}">
           <button type="submit" class="secondary-button">← Move to {{ columns[task.previous_column] }}</button>
         </form>
       {% endif %}
       {% if task.next_column %}
-        <form hx-post="/board/tasks/{{ task.id }}/move" hx-target="#board-columns" hx-swap="outerHTML">
+        <form hx-post="/board/tasks/{{ task.id }}/move" hx-target="#board-shell" hx-swap="outerHTML">
           <input type="hidden" name="column_key" value="{{ task.next_column }}">
           <button type="submit" class="secondary-button">Move to {{ columns[task.next_column] }} →</button>
         </form>
       {% endif %}
-      <form hx-post="/board/tasks/{{ task.id }}/archive" hx-target="#board-columns" hx-swap="outerHTML">
+      <form hx-post="/board/tasks/{{ task.id }}/archive" hx-target="#board-shell" hx-swap="outerHTML">
         <button type="submit" class="ghost-button">Archive task</button>
       </form>
     </div>
   </section>
 
   <section class="detail-section">
-    <p class="section-kicker">Description</p>
-    <div class="detail-body-block">
-      <p>{{ task.description or 'No description yet.' }}</p>
-    </div>
+    <p class="section-kicker">Edit</p>
+    <form class="detail-edit-form" hx-post="/board/tasks/{{ task.id }}/update" hx-target="[data-detail-panel]" hx-swap="innerHTML">
+      <label>
+        <span>Title</span>
+        <input type="text" name="title" value="{{ task.title }}" required>
+      </label>
+      <label>
+        <span>Project</span>
+        <input type="text" name="project_id" value="{{ task.project_id }}" list="project-options" required>
+      </label>
+      <div class="detail-form-grid">
+        <label>
+          <span>Priority</span>
+          <select name="priority">
+            <option value="">—</option>
+            {% for option in priority_options %}
+              <option value="{{ option }}"{% if task.priority == option %} selected{% endif %}>{{ option }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          <span>Due date</span>
+          <input type="date" name="due_at" value="{{ task.due_date or '' }}">
+        </label>
+      </div>
+      <label>
+        <span>Assignee</span>
+        <input type="text" name="assignee" value="{{ task.assignee or '' }}">
+      </label>
+      <label>
+        <span>Description</span>
+        <textarea name="description" rows="5">{{ task.description or '' }}</textarea>
+      </label>
+      <div class="detail-edit-actions">
+        <button type="submit" class="secondary-button">Save changes</button>
+      </div>
+    </form>
   </section>
 
   <section class="detail-section">

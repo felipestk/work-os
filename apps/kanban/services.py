@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
+from datetime import datetime, timezone
 from typing import Any
 
 from .db import connect, init_db
@@ -21,6 +22,7 @@ COLUMN_TO_STATUS = {
     'review': 'blocked',
     'done': 'done',
 }
+PRIORITY_OPTIONS = ['low', 'medium', 'high', 'urgent']
 
 
 def normalize_board(board: str | None) -> str:
@@ -30,6 +32,24 @@ def normalize_board(board: str | None) -> str:
 def normalize_column(column_key: str | None) -> str:
     value = (column_key or '').strip() or 'backlog'
     return value if value in COLUMNS else 'backlog'
+
+
+def normalize_priority(priority: str | None) -> str | None:
+    value = (priority or '').strip().lower()
+    return value if value in PRIORITY_OPTIONS else None
+
+
+def normalize_due_at(due_at: str | None) -> str | None:
+    value = (due_at or '').strip()
+    if not value:
+        return None
+    if len(value) == 10:
+        return f'{value}T00:00:00Z'
+    return value
+
+
+def today_iso() -> str:
+    return datetime.now(timezone.utc).date().isoformat()
 
 
 def previous_column(column_key: str) -> str | None:
@@ -63,12 +83,54 @@ def list_projects() -> list[dict[str, Any]]:
     return [dict(row) for row in rows]
 
 
-def list_board_tasks(board: str = BOARD_NAME) -> dict[str, list[dict[str, Any]]]:
+def list_filter_options() -> dict[str, list[str]]:
+    with connect() as conn:
+        init_db(conn)
+        assignees = [r['assignee'] for r in conn.execute("SELECT DISTINCT assignee FROM tasks WHERE assignee IS NOT NULL AND TRIM(assignee) != '' AND status != 'archived' ORDER BY assignee")]
+        customers = [r['customer_name'] for r in conn.execute(
+            '''
+            SELECT DISTINCT c.name AS customer_name
+            FROM tasks t
+            JOIN projects p ON p.id = t.project_id
+            JOIN customers c ON c.id = p.customer_id
+            WHERE t.status != 'archived'
+            ORDER BY c.name
+            '''
+        )]
+    return {'assignees': assignees, 'customers': customers}
+
+
+def build_filters(project_id: str = '', assignee: str = '', customer_name: str = '', q: str = '') -> dict[str, str]:
+    return {
+        'project_id': (project_id or '').strip(),
+        'assignee': (assignee or '').strip(),
+        'customer_name': (customer_name or '').strip(),
+        'q': (q or '').strip(),
+    }
+
+
+def list_board_tasks(board: str = BOARD_NAME, *, filters: dict[str, str] | None = None) -> dict[str, list[dict[str, Any]]]:
     grouped: dict[str, list[dict[str, Any]]] = {key: [] for key in COLUMNS}
+    filters = build_filters(**(filters or {}))
+    where = ["t.status != 'archived'", "COALESCE(NULLIF(t.board, ''), 'main') = ?"]
+    params: list[Any] = [normalize_board(board)]
+    if filters['project_id']:
+        where.append('t.project_id = ?')
+        params.append(filters['project_id'])
+    if filters['assignee']:
+        where.append('t.assignee = ?')
+        params.append(filters['assignee'])
+    if filters['customer_name']:
+        where.append('c.name = ?')
+        params.append(filters['customer_name'])
+    if filters['q']:
+        like = f"%{filters['q']}%"
+        where.append('(t.title LIKE ? OR COALESCE(t.description, "") LIKE ? OR p.title LIKE ? OR c.name LIKE ?)')
+        params.extend([like, like, like, like])
     with connect() as conn:
         init_db(conn)
         rows = conn.execute(
-            '''
+            f'''
             SELECT
               t.id,
               t.project_id,
@@ -90,14 +152,13 @@ def list_board_tasks(board: str = BOARD_NAME) -> dict[str, list[dict[str, Any]]]
             JOIN customers c ON c.id = p.customer_id
             LEFT JOIN task_comments tc ON tc.task_id = t.id
             LEFT JOIN attachments a ON a.entity_type = 'task' AND a.entity_ref = CAST(t.id AS TEXT)
-            WHERE t.status != 'archived'
-              AND COALESCE(NULLIF(t.board, ''), 'main') = ?
+            WHERE {' AND '.join(where)}
             GROUP BY
               t.id, t.project_id, t.title, t.description, t.status, t.priority, t.assignee, t.due_at,
               t.board, t.column_key, t.wip_order, t.sort_order, p.title, c.name
             ORDER BY column_key, display_order, t.id
             ''',
-            (normalize_board(board),),
+            params,
         ).fetchall()
     for row in rows:
         item = decorate_task(dict(row))
@@ -115,10 +176,14 @@ def summarize(text: str | None, limit: int = 140) -> str:
 def decorate_task(task: dict[str, Any]) -> dict[str, Any]:
     task['board'] = normalize_board(task.get('board'))
     task['column_key'] = normalize_column(task.get('column_key'))
+    task['priority'] = normalize_priority(task.get('priority'))
     task['description_preview'] = summarize(task.get('description'))
     task['previous_column'] = previous_column(task['column_key'])
     task['next_column'] = next_column(task['column_key'])
     task['column_label'] = COLUMNS[task['column_key']]
+    task['due_date'] = (task.get('due_at') or '')[:10] if task.get('due_at') else None
+    task['is_overdue'] = bool(task['due_date'] and task['due_date'] < today_iso() and task['column_key'] != 'done')
+    task['is_due_today'] = bool(task['due_date'] and task['due_date'] == today_iso() and task['column_key'] != 'done')
     return task
 
 
@@ -191,7 +256,7 @@ def move_task(task_id: int, destination_column: str) -> None:
         )
         conn.execute(
             "INSERT INTO task_comments(task_id, comment_type, body, author) VALUES (?, 'system', ?, 'kanban')",
-            (task_id, f'Task moved to {normalized_column}',),
+            (task_id, f'Task moved to {normalized_column}'),
         )
         conn.commit()
 
@@ -205,6 +270,39 @@ def archive_task(task_id: int) -> None:
         conn.execute("UPDATE tasks SET status='archived' WHERE id=?", (task_id,))
         conn.execute(
             "INSERT INTO task_comments(task_id, comment_type, body, author) VALUES (?, 'system', 'Task archived from board', 'kanban')",
+            (task_id,),
+        )
+        conn.commit()
+
+
+def update_task(task_id: int, *, title: str, description: str | None, project_id: str, priority: str | None, assignee: str | None, due_at: str | None) -> None:
+    with connect() as conn:
+        init_db(conn)
+        task = conn.execute('SELECT id FROM tasks WHERE id = ?', (task_id,)).fetchone()
+        if not task:
+            raise ValueError(f'Unknown task: {task_id}')
+        if not project_exists(conn, project_id):
+            raise ValueError(f'Unknown project: {project_id}')
+        normalized_priority = normalize_priority(priority)
+        normalized_due_at = normalize_due_at(due_at)
+        conn.execute(
+            '''
+            UPDATE tasks
+            SET title=?, description=?, project_id=?, priority=?, assignee=?, due_at=?
+            WHERE id=?
+            ''',
+            (
+                title.strip(),
+                (description or '').strip() or None,
+                project_id,
+                normalized_priority,
+                (assignee or '').strip() or None,
+                normalized_due_at,
+                task_id,
+            ),
+        )
+        conn.execute(
+            "INSERT INTO task_comments(task_id, comment_type, body, author) VALUES (?, 'system', 'Task updated from board drawer', 'kanban')",
             (task_id,),
         )
         conn.commit()

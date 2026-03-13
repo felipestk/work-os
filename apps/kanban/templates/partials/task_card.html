@@ -1,4 +1,4 @@
-<article class="task-card">
+<article class="task-card{% if task.is_overdue %} is-overdue{% elif task.is_due_today %} is-due-today{% endif %}">
   <button
     class="task-card-link"
     hx-get="/tasks/{{ task.id }}"
@@ -13,28 +13,32 @@
     <span class="task-project">{{ task.project_id }} · {{ task.project_title }}</span>
     <span class="task-customer">{{ task.customer_name }}</span>
     <span class="task-meta-row">
-      {% if task.priority %}<span>{{ task.priority }}</span>{% endif %}
+      {% if task.priority %}<span class="meta-pill">{{ task.priority }}</span>{% endif %}
       {% if task.assignee %}<span>{{ task.assignee }}</span>{% endif %}
-      {% if task.due_at %}<span>{{ task.due_at[:10] }}</span>{% endif %}
+      {% if task.due_date %}<span{% if task.is_overdue %} class="meta-alert"{% elif task.is_due_today %} class="meta-today"{% endif %}>{{ task.due_date }}</span>{% endif %}
+    </span>
+    <span class="task-stats">
+      <span>{{ task.comment_count }} comments</span>
+      <span>{{ task.attachment_count }} attachments</span>
     </span>
   </button>
 
   <div class="task-actions">
     {% if task.previous_column %}
-      <form hx-post="/board/tasks/{{ task.id }}/move" hx-target="#board-columns" hx-swap="outerHTML">
+      <form hx-post="/board/tasks/{{ task.id }}/move" hx-target="#board-shell" hx-swap="outerHTML">
         <input type="hidden" name="column_key" value="{{ task.previous_column }}">
         <button type="submit" class="secondary-button move-button" title="Move to {{ columns[task.previous_column] }}">←</button>
       </form>
     {% endif %}
 
     {% if task.next_column %}
-      <form hx-post="/board/tasks/{{ task.id }}/move" hx-target="#board-columns" hx-swap="outerHTML">
+      <form hx-post="/board/tasks/{{ task.id }}/move" hx-target="#board-shell" hx-swap="outerHTML">
         <input type="hidden" name="column_key" value="{{ task.next_column }}">
         <button type="submit" class="secondary-button move-button" title="Move to {{ columns[task.next_column] }}">→</button>
       </form>
     {% endif %}
 
-    <form class="archive-action" hx-post="/board/tasks/{{ task.id }}/archive" hx-target="#board-columns" hx-swap="outerHTML">
+    <form class="archive-action" hx-post="/board/tasks/{{ task.id }}/archive" hx-target="#board-shell" hx-swap="outerHTML">
       <button type="submit" class="ghost-button">archive</button>
     </form>
   </div>

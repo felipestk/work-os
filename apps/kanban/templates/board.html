@@ -4,19 +4,7 @@
 
 {% block content %}
 <main class="page-shell">
-  <header class="page-header">
-    <p class="eyebrow">board / {{ board_name }}</p>
-    <div class="header-copy">
-      <div>
-        <h1>Operations Board</h1>
-        <p class="subtitle">A global board for all non-archived work across projects, with tasks anchored to project and customer context.</p>
-      </div>
-    </div>
-  </header>
-
-  <section id="board-columns" class="board-columns" hx-swap="outerHTML">
-    {% include 'partials/board_columns.html' %}
-  </section>
+  {% include 'partials/board_shell.html' %}
 
   <div class="drawer-backdrop" data-detail-backdrop hidden></div>
   <aside class="detail-drawer" data-detail-drawer aria-hidden="true">

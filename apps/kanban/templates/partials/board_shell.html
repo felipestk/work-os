@@ -1,0 +1,51 @@
+<section id="board-shell" hx-swap="outerHTML">
+  <header class="page-header">
+    <p class="eyebrow">board / {{ board_name }}</p>
+    <div class="header-copy">
+      <div>
+        <h1>Operations Board</h1>
+        <p class="subtitle">A global board for all non-archived work across projects, with tasks anchored to project and customer context.</p>
+      </div>
+    </div>
+  </header>
+
+  <section class="board-filters">
+    <form class="filters-form" hx-get="/board" hx-target="#board-shell" hx-swap="outerHTML">
+      <label>
+        <span>Search</span>
+        <input type="text" name="q" value="{{ filters.q }}" placeholder="Title, project, customer">
+      </label>
+      <label>
+        <span>Project</span>
+        <input type="text" name="project_id" value="{{ filters.project_id }}" list="project-options" placeholder="PR0001">
+      </label>
+      <label>
+        <span>Assignee</span>
+        <input type="text" name="assignee" value="{{ filters.assignee }}" list="assignee-options" placeholder="Name">
+      </label>
+      <label>
+        <span>Customer</span>
+        <input type="text" name="customer_name" value="{{ filters.customer_name }}" list="customer-options" placeholder="Customer name">
+      </label>
+      <div class="filters-actions">
+        <button type="submit" class="secondary-button">Apply filters</button>
+        <button type="button" class="ghost-button" data-reset-filters>Reset</button>
+      </div>
+    </form>
+  </section>
+
+  <section id="board-columns" class="board-columns">
+    {% include 'partials/board_columns.html' %}
+  </section>
+
+  <datalist id="assignee-options">
+    {% for assignee in assignee_options %}
+      <option value="{{ assignee }}">
+    {% endfor %}
+  </datalist>
+  <datalist id="customer-options">
+    {% for customer in customer_options %}
+      <option value="{{ customer }}">
+    {% endfor %}
+  </datalist>
+</section>
