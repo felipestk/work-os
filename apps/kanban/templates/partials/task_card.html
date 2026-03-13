@@ -1,0 +1,21 @@
+<article class="task-card">
+  <button
+    class="task-card-link"
+    hx-get="/tasks/{{ task.id }}"
+    hx-target="[data-detail-panel]"
+    hx-swap="innerHTML"
+    type="button"
+  >
+    <span class="task-title">{{ task.title }}</span>
+    {% if task.description_preview %}
+      <span class="task-preview">{{ task.description_preview }}</span>
+    {% endif %}
+    <span class="task-project">{{ task.project_id }} · {{ task.project_title }}</span>
+    <span class="task-customer">{{ task.customer_name }}</span>
+    <span class="task-meta-row">
+      {% if task.priority %}<span>{{ task.priority }}</span>{% endif %}
+      {% if task.assignee %}<span>{{ task.assignee }}</span>{% endif %}
+      {% if task.due_at %}<span>{{ task.due_at[:10] }}</span>{% endif %}
+    </span>
+  </button>
+</article>

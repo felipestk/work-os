@@ -1,0 +1,5 @@
+<section id="board-columns" class="board-columns-grid">
+  {% for column_key, column_label in columns.items() %}
+    {% include 'partials/board_column.html' %}
+  {% endfor %}
+</section>

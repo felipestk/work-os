@@ -1,0 +1,18 @@
+<article class="board-column">
+  <header class="column-header">
+    <div>
+      <p class="column-label">{{ column_label }}</p>
+      <p class="column-count">{{ counts[column_key] }} task{% if counts[column_key] != 1 %}s{% endif %}</p>
+    </div>
+  </header>
+
+  {% include 'partials/task_quick_add.html' %}
+
+  <div class="task-stack">
+    {% for task in grouped[column_key] %}
+      {% include 'partials/task_card.html' %}
+    {% else %}
+      <div class="empty-state">No tasks in {{ column_label }}.</div>
+    {% endfor %}
+  </div>
+</article>

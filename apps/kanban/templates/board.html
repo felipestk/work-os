@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+
+{% block title %}Operations Board{% endblock %}
+
+{% block content %}
+<main class="page-shell">
+  <header class="page-header">
+    <p class="eyebrow">board / {{ board_name }}</p>
+    <div class="header-copy">
+      <div>
+        <h1>Operations Board</h1>
+        <p class="subtitle">A global board for all non-archived work across projects, with tasks anchored to project and customer context.</p>
+      </div>
+      <section class="detail-panel" data-detail-panel>
+        <div class="detail-placeholder">Select a task to inspect its details.</div>
+      </section>
+    </div>
+  </header>
+
+  <section id="board-columns" class="board-columns" hx-swap="outerHTML">
+    {% include 'partials/board_columns.html' %}
+  </section>
+
+  <datalist id="project-options">
+    {% for project in projects %}
+      <option value="{{ project.id }}">{{ project.title }} — {{ project.customer_name }}</option>
+    {% endfor %}
+  </datalist>
+</main>
+{% endblock %}

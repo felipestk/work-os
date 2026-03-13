@@ -13,6 +13,8 @@ This repo contains:
 
 Current status: working prototype from PR0083 with optional task + board support.
 
+Kanban app scaffold now lives under `apps/kanban/` with a first `/board` implementation.
+
 ## What Work OS manages
 ### Default model
 - customers
@@ -55,6 +57,16 @@ source ~/.local/share/openclaw-workos/env.sh
 workctl doctor
 tests/smoke.sh
 ```
+
+## Kanban app
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements-kanban.txt
+uvicorn apps.kanban.main:app --reload
+```
+
+Then open `http://127.0.0.1:8000/board`.
 
 ## Docs
 - `docs/install.md`

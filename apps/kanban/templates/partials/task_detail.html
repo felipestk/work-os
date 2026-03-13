@@ -1,0 +1,54 @@
+<div class="detail-card">
+  <div class="detail-header">
+    <div>
+      <p class="eyebrow">task {{ task.id }}</p>
+      <h2>{{ task.title }}</h2>
+      <p class="detail-subtitle">{{ task.project_id }} · {{ task.project_title }} · {{ task.customer_name }}</p>
+    </div>
+    <button class="detail-close" type="button" data-detail-close>close</button>
+  </div>
+
+  <dl class="detail-grid">
+    <div><dt>column</dt><dd>{{ task.column_key }}</dd></div>
+    <div><dt>status</dt><dd>{{ task.status }}</dd></div>
+    <div><dt>priority</dt><dd>{{ task.priority or '—' }}</dd></div>
+    <div><dt>assignee</dt><dd>{{ task.assignee or '—' }}</dd></div>
+    <div><dt>due</dt><dd>{{ task.due_at or '—' }}</dd></div>
+    <div><dt>board</dt><dd>{{ task.board }}</dd></div>
+  </dl>
+
+  <section class="detail-section">
+    <h3>Description</h3>
+    <p>{{ task.description or 'No description yet.' }}</p>
+  </section>
+
+  <section class="detail-section">
+    <h3>Comments</h3>
+    {% if task.comments %}
+      <ul class="detail-list">
+      {% for comment in task.comments %}
+        <li>
+          <strong>{{ comment.author or 'unknown' }}</strong>
+          <span>{{ comment.created_at }}</span>
+          <p>{{ comment.body }}</p>
+        </li>
+      {% endfor %}
+      </ul>
+    {% else %}
+      <p>No comments yet.</p>
+    {% endif %}
+  </section>
+
+  <section class="detail-section">
+    <h3>Attachments</h3>
+    {% if task.attachments %}
+      <ul class="detail-list monospace">
+      {% for attachment in task.attachments %}
+        <li>{{ attachment.file_path }}</li>
+      {% endfor %}
+      </ul>
+    {% else %}
+      <p>No attachments.</p>
+    {% endif %}
+  </section>
+</div>
