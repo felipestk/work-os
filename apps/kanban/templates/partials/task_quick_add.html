@@ -4,26 +4,9 @@
     <span>New task</span>
     <input type="text" name="title" placeholder="Task title" required>
   </label>
-  <label>
-    <span>Project</span>
-    <select name="project_id">
-      <option value="">Select a project</option>
-      {% for project in projects %}
-        <option value="{{ project.id }}">{{ project.id }} — {{ project.title }} · {{ project.customer_name }}</option>
-      {% endfor %}
-    </select>
-  </label>
-  <button type="button" class="inline-toggle" data-inline-create-toggle>+ Or create customer + project</button>
-  <div class="inline-create-fields" data-inline-create-fields hidden>
-    <label>
-      <span>Customer</span>
-      <input type="text" name="new_customer_name" placeholder="New customer name">
-    </label>
-    <label>
-      <span>Project title</span>
-      <input type="text" name="new_project_title" placeholder="New project title">
-    </label>
-  </div>
+  {% with origin='quick-add', target='project_id', value='', current_label='' %}
+    {% include 'partials/project_picker_field.html' %}
+  {% endwith %}
   <label>
     <span>Notes</span>
     <textarea name="description" rows="2" placeholder="Optional context"></textarea>

@@ -13,10 +13,9 @@
     </section>
   </aside>
 
-  <datalist id="project-options">
-    {% for project in projects %}
-      <option value="{{ project.id }}">{{ project.title }} — {{ project.customer_name }}</option>
-    {% endfor %}
-  </datalist>
+  <div class="modal-backdrop" data-project-modal-backdrop hidden></div>
+  <aside class="project-modal" data-project-modal aria-hidden="true">
+    <section class="project-modal-panel" data-project-modal-panel></section>
+  </aside>
 </main>
 {% endblock %}

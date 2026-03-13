@@ -1,0 +1,19 @@
+{% set current_id = value or '' %}
+{% set current_label = current_label or current_id %}
+<div class="picker-field" data-project-picker data-origin="{{ origin }}" data-target="{{ target }}">
+  <input type="hidden" name="{{ target }}" value="{{ current_id }}" data-project-picker-hidden>
+  <label>
+    <span>Project</span>
+    <input type="text"
+           value="{{ current_label }}"
+           placeholder="Search project"
+           autocomplete="off"
+           data-project-picker-input
+           hx-get="/board/projects/search"
+           hx-trigger="keyup changed delay:200ms, focus"
+           hx-target="closest [data-project-picker] [data-project-picker-results]"
+           hx-include="this"
+           name="q">
+  </label>
+  <div class="picker-results" data-project-picker-results></div>
+</div>

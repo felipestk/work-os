@@ -49,26 +49,9 @@
         <span>Title</span>
         <input type="text" name="title" value="{{ task.title }}" required>
       </label>
-      <label>
-        <span>Project</span>
-        <select name="project_id">
-          <option value="">Select a project</option>
-          {% for project in projects %}
-            <option value="{{ project.id }}"{% if task.project_id == project.id %} selected{% endif %}>{{ project.id }} — {{ project.title }} · {{ project.customer_name }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <button type="button" class="inline-toggle" data-inline-create-toggle>+ Or create customer + project</button>
-      <div class="inline-create-fields" data-inline-create-fields hidden>
-        <label>
-          <span>Customer</span>
-          <input type="text" name="new_customer_name" placeholder="New customer name">
-        </label>
-        <label>
-          <span>Project title</span>
-          <input type="text" name="new_project_title" placeholder="New project title">
-        </label>
-      </div>
+      {% with origin='detail-edit', target='project_id', value=task.project_id, current_label=task.project_id ~ ' — ' ~ task.project_title ~ ' · ' ~ task.customer_name %}
+        {% include 'partials/project_picker_field.html' %}
+      {% endwith %}
       <div class="detail-form-grid">
         <label>
           <span>Priority</span>

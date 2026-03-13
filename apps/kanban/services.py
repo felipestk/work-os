@@ -115,6 +115,66 @@ def list_projects() -> list[dict[str, Any]]:
     return [dict(row) for row in rows]
 
 
+def search_projects(query: str = '', limit: int = 10) -> list[dict[str, Any]]:
+    query = (query or '').strip()
+    like = f'%{query}%'
+    with connect() as conn:
+        init_db(conn)
+        if query:
+            rows = conn.execute(
+                '''
+                SELECT p.id, p.title, c.name AS customer_name
+                FROM projects p
+                JOIN customers c ON c.id = p.customer_id
+                WHERE p.id LIKE ? OR p.title LIKE ? OR c.name LIKE ?
+                ORDER BY p.id DESC
+                LIMIT ?
+                ''',
+                (like, like, like, limit),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                '''
+                SELECT p.id, p.title, c.name AS customer_name
+                FROM projects p
+                JOIN customers c ON c.id = p.customer_id
+                ORDER BY p.id DESC
+                LIMIT ?
+                ''',
+                (limit,),
+            ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def search_customers(query: str = '', limit: int = 10) -> list[dict[str, Any]]:
+    query = (query or '').strip()
+    like = f'%{query}%'
+    with connect() as conn:
+        init_db(conn)
+        if query:
+            rows = conn.execute(
+                '''
+                SELECT id, customer_code, name
+                FROM customers
+                WHERE name LIKE ? OR customer_code LIKE ?
+                ORDER BY name ASC
+                LIMIT ?
+                ''',
+                (like, like, limit),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                '''
+                SELECT id, customer_code, name
+                FROM customers
+                ORDER BY name ASC
+                LIMIT ?
+                ''',
+                (limit,),
+            ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def list_filter_options() -> dict[str, list[str]]:
     with connect() as conn:
         init_db(conn)
@@ -141,53 +201,42 @@ def build_filters(project_id: str = '', assignee: str = '', customer_name: str =
     }
 
 
-def create_customer_and_project(conn, *, customer_name: str, project_title: str, owner: str | None = None) -> str:
+def create_customer_and_project(*, customer_name: str, project_title: str, owner: str | None = None) -> dict[str, str]:
     customer_name = customer_name.strip()
     project_title = project_title.strip()
     if not customer_name or not project_title:
         raise ValueError('customer and project title are required')
-    row = conn.execute('SELECT id, customer_code, name FROM customers WHERE name = ?', (customer_name,)).fetchone()
-    if row:
-        customer_id = row['id']
-        customer_code = row['customer_code']
-    else:
-        customer_code = next_customer_code(conn)
-        cur = conn.execute(
+    with connect() as conn:
+        init_db(conn)
+        row = conn.execute('SELECT id, customer_code, name FROM customers WHERE name = ?', (customer_name,)).fetchone()
+        if row:
+            customer_id = row['id']
+            customer_code = row['customer_code']
+        else:
+            customer_code = next_customer_code(conn)
+            cur = conn.execute(
+                "INSERT INTO customers(customer_code, customer_type, name) VALUES (?, 'company', ?)",
+                (customer_code, customer_name),
+            )
+            customer_id = cur.lastrowid
+            (CUSTOMERS_ROOT / customer_code).mkdir(parents=True, exist_ok=True)
+        project_id = next_project_id(conn)
+        slug = slugify(project_title)
+        folder = PROJECTS_ROOT / f'{project_id}-{slug}'
+        folder.mkdir(parents=True, exist_ok=True)
+        conn.execute(
             '''
-            INSERT INTO customers(customer_code, customer_type, name)
-            VALUES (?, 'company', ?)
+            INSERT INTO projects(id, slug, customer_id, title, status, objective, summary, folder_path, owner)
+            VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?)
             ''',
-            (customer_code, customer_name),
+            (project_id, slug, customer_id, project_title, f'Created from kanban picker for {customer_name}', None, str(folder), owner),
         )
-        customer_id = cur.lastrowid
-        (CUSTOMERS_ROOT / customer_code).mkdir(parents=True, exist_ok=True)
-    project_id = next_project_id(conn)
-    slug = slugify(project_title)
-    folder = PROJECTS_ROOT / f'{project_id}-{slug}'
-    folder.mkdir(parents=True, exist_ok=True)
-    conn.execute(
-        '''
-        INSERT INTO projects(id, slug, customer_id, title, status, objective, summary, folder_path, owner)
-        VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?)
-        ''',
-        (project_id, slug, customer_id, project_title, f'Created inline from kanban for {customer_name}', None, str(folder), owner),
-    )
-    conn.execute(
-        "INSERT INTO project_events(project_id, event_type, note, metadata_json) VALUES (?, 'created', ?, ?)",
-        (project_id, 'Project created inline from kanban', '{"actor":"kanban","timestamp":"' + now_iso() + '"}'),
-    )
-    return project_id
-
-
-def resolve_project_id(conn, project_id: str | None, new_customer_name: str | None = None, new_project_title: str | None = None, owner: str | None = None) -> str:
-    project_id = (project_id or '').strip()
-    if project_id:
-        if not project_exists(conn, project_id):
-            raise ValueError(f'Unknown project: {project_id}')
-        return project_id
-    if (new_customer_name or '').strip() and (new_project_title or '').strip():
-        return create_customer_and_project(conn, customer_name=new_customer_name or '', project_title=new_project_title or '', owner=owner)
-    raise ValueError('select a project or create a new customer/project')
+        conn.execute(
+            "INSERT INTO project_events(project_id, event_type, note, metadata_json) VALUES (?, 'created', ?, ?)",
+            (project_id, 'Project created from kanban picker', '{"actor":"kanban","timestamp":"' + now_iso() + '"}'),
+        )
+        conn.commit()
+    return {'id': project_id, 'title': project_title, 'customer_name': customer_name}
 
 
 def list_board_tasks(board: str = BOARD_NAME, *, filters: dict[str, str] | None = None) -> dict[str, list[dict[str, Any]]]:
@@ -286,10 +335,11 @@ def next_wip_order(conn, column_key: str, board: str = BOARD_NAME) -> float:
     return float(row['max_order'] or 0) + 10.0
 
 
-def create_task(*, title: str, project_id: str, column_key: str, description: str | None = None, new_customer_name: str | None = None, new_project_title: str | None = None) -> int:
+def create_task(*, title: str, project_id: str, column_key: str, description: str | None = None) -> int:
     with connect() as conn:
         init_db(conn)
-        resolved_project_id = resolve_project_id(conn, project_id, new_customer_name, new_project_title, owner='kanban')
+        if not project_exists(conn, project_id):
+            raise ValueError(f'Unknown project: {project_id}')
         normalized_column = normalize_column(column_key)
         wip_order = next_wip_order(conn, normalized_column)
         cur = conn.execute(
@@ -298,7 +348,7 @@ def create_task(*, title: str, project_id: str, column_key: str, description: st
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ''',
             (
-                resolved_project_id,
+                project_id,
                 title.strip(),
                 (description or '').strip() or None,
                 COLUMN_TO_STATUS[normalized_column],
@@ -327,11 +377,7 @@ def move_task(task_id: int, destination_column: str) -> None:
             raise ValueError('Archived tasks cannot be moved from the board')
         wip_order = next_wip_order(conn, normalized_column)
         conn.execute(
-            '''
-            UPDATE tasks
-            SET board=?, column_key=?, wip_order=?, sort_order=?, status=?
-            WHERE id=?
-            ''',
+            'UPDATE tasks SET board=?, column_key=?, wip_order=?, sort_order=?, status=? WHERE id=?',
             (BOARD_NAME, normalized_column, wip_order, int(wip_order), COLUMN_TO_STATUS[normalized_column], task_id),
         )
         conn.execute(
@@ -348,42 +394,31 @@ def archive_task(task_id: int) -> None:
         if not task:
             raise ValueError(f'Unknown task: {task_id}')
         conn.execute("UPDATE tasks SET status='archived' WHERE id=?", (task_id,))
-        conn.execute(
-            "INSERT INTO task_comments(task_id, comment_type, body, author) VALUES (?, 'system', 'Task archived from board', 'kanban')",
-            (task_id,),
-        )
+        conn.execute("INSERT INTO task_comments(task_id, comment_type, body, author) VALUES (?, 'system', 'Task archived from board', 'kanban')", (task_id,))
         conn.commit()
 
 
-def update_task(task_id: int, *, title: str, description: str | None, project_id: str, priority: str | None, assignee: str | None, due_at: str | None, new_customer_name: str | None = None, new_project_title: str | None = None) -> None:
+def update_task(task_id: int, *, title: str, description: str | None, project_id: str, priority: str | None, assignee: str | None, due_at: str | None) -> None:
     with connect() as conn:
         init_db(conn)
         task = conn.execute('SELECT id FROM tasks WHERE id = ?', (task_id,)).fetchone()
         if not task:
             raise ValueError(f'Unknown task: {task_id}')
-        resolved_project_id = resolve_project_id(conn, project_id, new_customer_name, new_project_title, owner='kanban')
-        normalized_priority = normalize_priority(priority)
-        normalized_due_at = normalize_due_at(due_at)
+        if not project_exists(conn, project_id):
+            raise ValueError(f'Unknown project: {project_id}')
         conn.execute(
-            '''
-            UPDATE tasks
-            SET title=?, description=?, project_id=?, priority=?, assignee=?, due_at=?
-            WHERE id=?
-            ''',
+            'UPDATE tasks SET title=?, description=?, project_id=?, priority=?, assignee=?, due_at=? WHERE id=?',
             (
                 title.strip(),
                 (description or '').strip() or None,
-                resolved_project_id,
-                normalized_priority,
+                project_id,
+                normalize_priority(priority),
                 (assignee or '').strip() or None,
-                normalized_due_at,
+                normalize_due_at(due_at),
                 task_id,
             ),
         )
-        conn.execute(
-            "INSERT INTO task_comments(task_id, comment_type, body, author) VALUES (?, 'system', 'Task updated from board drawer', 'kanban')",
-            (task_id,),
-        )
+        conn.execute("INSERT INTO task_comments(task_id, comment_type, body, author) VALUES (?, 'system', 'Task updated from board drawer', 'kanban')", (task_id,))
         conn.commit()
 
 
@@ -392,12 +427,9 @@ def get_task(task_id: int) -> dict[str, Any] | None:
         init_db(conn)
         row = conn.execute(
             '''
-            SELECT
-              t.*,
-              p.title AS project_title,
-              c.name AS customer_name,
-              COUNT(DISTINCT tc.id) AS comment_count,
-              COUNT(DISTINCT a.id) AS attachment_count
+            SELECT t.*, p.title AS project_title, c.name AS customer_name,
+                   COUNT(DISTINCT tc.id) AS comment_count,
+                   COUNT(DISTINCT a.id) AS attachment_count
             FROM tasks t
             JOIN projects p ON p.id = t.project_id
             JOIN customers c ON c.id = p.customer_id

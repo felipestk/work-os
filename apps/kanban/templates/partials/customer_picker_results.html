@@ -1,0 +1,11 @@
+<div class="picker-results-card">
+  {% for customer in customers %}
+    <button type="button" class="picker-option" data-customer-select data-customer-name="{{ customer.name }}">
+      <strong>{{ customer.name }}</strong>
+      <span>{{ customer.customer_code }}</span>
+    </button>
+  {% else %}
+    <div class="picker-empty">No matching customers.</div>
+  {% endfor %}
+  <button type="button" class="picker-create" data-apply-customer-query data-customer-query="{{ query }}">+ Add new customer</button>
+</div>

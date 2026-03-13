@@ -1,0 +1,35 @@
+<div class="modal-card">
+  <div class="modal-header">
+    <div>
+      <p class="eyebrow">create project</p>
+      <h3>New project</h3>
+    </div>
+    <button type="button" class="secondary-button" data-project-modal-close>Close</button>
+  </div>
+  <form class="modal-form" hx-post="/board/project-create" hx-target="[data-project-modal-panel]" hx-swap="innerHTML">
+    <input type="hidden" name="origin" value="{{ origin }}">
+    <input type="hidden" name="target" value="{{ target }}">
+    <label>
+      <span>Customer</span>
+      <input type="text"
+             name="customer_name"
+             placeholder="Search or add customer"
+             autocomplete="off"
+             data-customer-picker-input
+             hx-get="/board/customers/search"
+             hx-trigger="keyup changed delay:200ms, focus"
+             hx-target="[data-customer-picker-results]"
+             hx-include="this">
+    </label>
+    <div class="picker-results" data-customer-picker-results>
+      {% include 'partials/customer_picker_results.html' %}
+    </div>
+    <label>
+      <span>Project title</span>
+      <input type="text" name="project_title" placeholder="Project title" required>
+    </label>
+    <div class="modal-actions">
+      <button type="submit" class="secondary-button">Create project</button>
+    </div>
+  </form>
+</div>

@@ -5,6 +5,9 @@ function placeholderHtml() {
 function getDrawer() { return document.querySelector('[data-detail-drawer]'); }
 function getBackdrop() { return document.querySelector('[data-detail-backdrop]'); }
 function getPanel() { return document.querySelector('[data-detail-panel]'); }
+function getProjectModal() { return document.querySelector('[data-project-modal]'); }
+function getProjectModalBackdrop() { return document.querySelector('[data-project-modal-backdrop]'); }
+function getProjectModalPanel() { return document.querySelector('[data-project-modal-panel]'); }
 
 function openDrawer() {
   const drawer = getDrawer();
@@ -34,6 +37,28 @@ function closeDrawer(resetPanel = false) {
   if (resetPanel && panel) panel.innerHTML = placeholderHtml();
 }
 
+function openProjectModal() {
+  const modal = getProjectModal();
+  const backdrop = getProjectModalBackdrop();
+  if (modal) {
+    modal.classList.add('is-open');
+    modal.setAttribute('aria-hidden', 'false');
+  }
+  if (backdrop) backdrop.hidden = false;
+}
+
+function closeProjectModal(reset = true) {
+  const modal = getProjectModal();
+  const backdrop = getProjectModalBackdrop();
+  const panel = getProjectModalPanel();
+  if (modal) {
+    modal.classList.remove('is-open');
+    modal.setAttribute('aria-hidden', 'true');
+  }
+  if (backdrop) backdrop.hidden = true;
+  if (reset && panel) panel.innerHTML = '';
+}
+
 function toggleQuickAdd(columnKey, open) {
   const form = document.querySelector(`[data-quick-add-form="${columnKey}"]`);
   const button = document.querySelector(`[data-quick-add-toggle="${columnKey}"]`);
@@ -55,15 +80,70 @@ function resetFilters() {
   if (window.htmx) window.htmx.trigger(form, 'submit');
 }
 
-function toggleInlineCreate(button) {
+function applyProjectSelection(button) {
+  const picker = button.closest('[data-project-picker]');
+  if (!picker) return;
+  const hidden = picker.querySelector('[data-project-picker-hidden]');
+  const input = picker.querySelector('[data-project-picker-input]');
+  const results = picker.querySelector('[data-project-picker-results]');
+  if (hidden) hidden.value = button.dataset.projectId || '';
+  if (input) input.value = button.dataset.projectLabel || '';
+  if (results) results.innerHTML = '';
+}
+
+function applyCustomerSelection(button) {
   const form = button.closest('form');
   if (!form) return;
-  const fields = form.querySelector('[data-inline-create-fields]');
-  if (!fields) return;
-  const isHidden = fields.hidden;
-  fields.hidden = !isHidden;
-  button.classList.toggle('is-active', isHidden);
-  button.textContent = isHidden ? '− Use existing project instead' : '+ Or create customer + project';
+  const input = form.querySelector('input[name="customer_name"]');
+  const results = form.querySelector('[data-customer-picker-results]');
+  if (input) input.value = button.dataset.customerName || '';
+  if (results) results.innerHTML = '';
+}
+
+function applyCustomerQuery(button) {
+  const form = button.closest('form');
+  if (!form) return;
+  const input = form.querySelector('input[name="customer_name"]');
+  const results = form.querySelector('[data-customer-picker-results]');
+  if (input) input.value = button.dataset.customerQuery || '';
+  if (results) results.innerHTML = '';
+}
+
+function openProjectCreateFromPicker(button) {
+  const picker = button.closest('[data-project-picker]');
+  if (!picker || !window.htmx) return;
+  const origin = picker.dataset.origin || 'quick-add';
+  const target = picker.dataset.target || 'project_id';
+  const query = button.dataset.projectQuery || '';
+  const panel = getProjectModalPanel();
+  if (!panel) return;
+  window.htmx.ajax('GET', `/board/project-create?origin=${encodeURIComponent(origin)}&target=${encodeURIComponent(target)}`, { target: panel, swap: 'innerHTML' });
+  openProjectModal();
+  setTimeout(() => {
+    const titleInput = panel.querySelector('input[name="project_title"]');
+    if (titleInput && query) titleInput.value = query;
+  }, 50);
+}
+
+function consumeCreatedProject(payload) {
+  const origin = payload.dataset.origin;
+  const targetName = payload.dataset.target;
+  const projectId = payload.dataset.projectId;
+  const projectLabel = payload.dataset.projectLabel;
+  const scope = origin === 'detail-edit'
+    ? document.querySelector('[data-detail-panel] .detail-edit-form')
+    : document.querySelector('[data-quick-add-form="backlog"]');
+  if (!scope) return closeProjectModal();
+  const hidden = scope.querySelector(`input[name="${targetName}"]`);
+  const picker = scope.querySelector('[data-project-picker]');
+  if (hidden) hidden.value = projectId;
+  if (picker) {
+    const input = picker.querySelector('[data-project-picker-input]');
+    const results = picker.querySelector('[data-project-picker-results]');
+    if (input) input.value = projectLabel;
+    if (results) results.innerHTML = '';
+  }
+  closeProjectModal();
 }
 
 document.addEventListener('click', (event) => {
@@ -82,16 +162,39 @@ document.addEventListener('click', (event) => {
   const resetFiltersButton = event.target.closest('[data-reset-filters]');
   if (resetFiltersButton) return resetFilters();
 
-  const inlineCreateToggle = event.target.closest('[data-inline-create-toggle]');
-  if (inlineCreateToggle) return toggleInlineCreate(inlineCreateToggle);
+  const projectSelect = event.target.closest('[data-project-select]');
+  if (projectSelect) return applyProjectSelection(projectSelect);
+
+  const openProjectCreate = event.target.closest('[data-open-project-create]');
+  if (openProjectCreate) return openProjectCreateFromPicker(openProjectCreate);
+
+  const customerSelect = event.target.closest('[data-customer-select]');
+  if (customerSelect) return applyCustomerSelection(customerSelect);
+
+  const customerQuery = event.target.closest('[data-apply-customer-query]');
+  if (customerQuery) return applyCustomerQuery(customerQuery);
+
+  const modalClose = event.target.closest('[data-project-modal-close]');
+  if (modalClose) return closeProjectModal();
+
+  const modalBackdrop = event.target.closest('[data-project-modal-backdrop]');
+  if (modalBackdrop) return closeProjectModal();
 });
 
 document.body.addEventListener('htmx:afterSwap', (event) => {
   const target = event.detail.target;
   if (target && target.matches && target.matches('[data-detail-panel]')) openDrawer();
   if (target && target.id === 'board-shell') closeDrawer(false);
+  if (target && target.matches && target.matches('[data-project-modal-panel]')) {
+    openProjectModal();
+    const payload = target.querySelector('[data-created-project]');
+    if (payload) consumeCreatedProject(payload);
+  }
 });
 
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape') closeDrawer(false);
+  if (event.key === 'Escape') {
+    closeDrawer(false);
+    closeProjectModal(false);
+  }
 });
