@@ -9,18 +9,16 @@
   <form class="modal-form" hx-post="/board/project-create" hx-target="[data-project-modal-panel]" hx-swap="innerHTML">
     <input type="hidden" name="origin" value="{{ origin }}">
     <input type="hidden" name="target" value="{{ target }}">
-    <label>
-      <span>Customer</span>
-      <input type="text"
-             name="customer_name"
-             placeholder="Search or add customer"
-             autocomplete="off"
-             data-customer-picker-input
-             hx-get="/board/customers/search"
-             hx-trigger="keyup changed delay:200ms, focus"
-             hx-target="[data-customer-picker-results]"
-             hx-include="this">
-    </label>
+    <span>Customer</span>
+    <input type="text"
+           name="customer_name"
+           placeholder="Search or add customer"
+           autocomplete="off"
+           data-customer-picker-input
+           hx-get="/board/customers/search"
+           hx-trigger="keyup changed delay:200ms, focus"
+           hx-target="next [data-customer-picker-results]"
+           hx-include="this">
     <div class="picker-results" data-customer-picker-results>
       {% include 'partials/customer_picker_results.html' %}
     </div>
