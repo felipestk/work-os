@@ -130,7 +130,8 @@ button:hover, .secondary-button:hover, .ghost-button:hover, .column-add-toggle:h
 .detail-actions button { width: 100%; text-align: left; }
 .detail-body-block { border-top: 1px solid var(--border); padding-top: 14px; }
 .detail-body-block p { font-size: 14px; line-height: 1.7; }
-.detail-edit-form, .modal-form { display: grid; gap: 12px; }
+.detail-edit-form, .modal-form, .detail-comment-form { display: grid; gap: 12px; }
+.detail-comment-form { margin-bottom: 16px; padding-bottom: 18px; border-bottom: 1px solid var(--border); }
 .detail-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .detail-list { padding-left: 0; list-style: none; color: var(--muted); }
 .comments-list li, .attachment-list li { padding: 12px 0; border-top: 1px solid var(--border); }
@@ -138,5 +139,6 @@ button:hover, .secondary-button:hover, .ghost-button:hover, .column-add-toggle:h
 .comment-meta { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
 .comment-meta strong { font-size: 13px; font-weight: 600; color: var(--text); }
 .comment-meta span, .attachment-list li { font-size: 12px; color: var(--soft); }
+.comment-item-system p { color: var(--soft); }
 @media (max-width: 1280px) { .filters-form { grid-template-columns: repeat(2, minmax(240px, 1fr)); } .board-columns-grid { grid-template-columns: repeat(2, minmax(240px, 1fr)); } .active-filter-bar { flex-direction: column; align-items: flex-start; } }
 @media (max-width: 720px) { .page-shell { padding: 18px; } h1 { font-size: 40px; } h2 { font-size: 32px; } .filters-form, .board-columns-grid, .detail-form-grid, .modal-form { grid-template-columns: 1fr; } .detail-drawer, .project-modal { width: 100vw; } .detail-card, .modal-card { padding: 22px 18px 30px; } .active-filter-summary { flex-direction: column; gap: 4px; align-items: flex-start; } }

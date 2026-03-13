@@ -427,6 +427,27 @@ def update_task(task_id: int, *, title: str, description: str | None, project_id
         conn.commit()
 
 
+def add_task_comment(task_id: int, *, body: str, author: str | None = None, comment_type: str = 'comment') -> int:
+    cleaned_body = (body or '').strip()
+    cleaned_author = (author or '').strip() or 'kanban'
+    cleaned_type = (comment_type or '').strip().lower() or 'comment'
+    if not cleaned_body:
+        raise ValueError('comment body is required')
+    if cleaned_type not in {'comment', 'note', 'system'}:
+        cleaned_type = 'comment'
+    with connect() as conn:
+        init_db(conn)
+        task = conn.execute('SELECT id FROM tasks WHERE id = ?', (task_id,)).fetchone()
+        if not task:
+            raise ValueError(f'Unknown task: {task_id}')
+        cur = conn.execute(
+            'INSERT INTO task_comments(task_id, comment_type, body, author) VALUES (?, ?, ?, ?)',
+            (task_id, cleaned_type, cleaned_body, cleaned_author),
+        )
+        conn.commit()
+        return int(cur.lastrowid)
+
+
 def get_task(task_id: int) -> dict[str, Any] | None:
     with connect() as conn:
         init_db(conn)

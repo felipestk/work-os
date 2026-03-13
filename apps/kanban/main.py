@@ -9,6 +9,7 @@ from .services import (
     BOARD_NAME,
     COLUMNS,
     PRIORITY_OPTIONS,
+    add_task_comment,
     archive_task,
     build_filters,
     column_counts,
@@ -152,6 +153,15 @@ def board_task_update(request: Request, task_id: int, title: str = Form(...), de
         raise HTTPException(status_code=400, detail='title is required')
     try:
         update_task(task_id, title=title, description=description, project_id=project_id.strip(), priority=priority, assignee=assignee, due_at=due_at)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return templates.TemplateResponse(request, 'partials/task_detail.html', task_detail_context(request, task_id))
+
+
+@app.post('/board/tasks/{task_id}/comments', response_class=HTMLResponse)
+def board_task_comment_create(request: Request, task_id: int, body: str = Form(...), author: str = Form('')):
+    try:
+        add_task_comment(task_id, body=body, author=author)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return templates.TemplateResponse(request, 'partials/task_detail.html', task_detail_context(request, task_id))

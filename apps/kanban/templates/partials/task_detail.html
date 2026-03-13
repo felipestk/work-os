@@ -83,11 +83,24 @@
 
   <section class="detail-section">
     <p class="section-kicker">Comments</p>
+    <form class="detail-comment-form" hx-post="/board/tasks/{{ task.id }}/comments" hx-target="[data-detail-panel]" hx-swap="innerHTML">
+      <label>
+        <span>Add comment</span>
+        <textarea name="body" rows="3" placeholder="What happened, what changed, what matters next?" required></textarea>
+      </label>
+      <label>
+        <span>Author</span>
+        <input type="text" name="author" value="kanban">
+      </label>
+      <div class="detail-edit-actions">
+        <button type="submit" class="secondary-button">Add comment</button>
+      </div>
+    </form>
     <div class="detail-body-block">
       {% if task.comments %}
         <ul class="detail-list comments-list">
         {% for comment in task.comments %}
-          <li>
+          <li class="comment-item comment-item-{{ comment.comment_type or 'comment' }}">
             <div class="comment-meta">
               <strong>{{ comment.author or 'unknown' }}</strong>
               <span>{{ comment.created_at }}</span>
