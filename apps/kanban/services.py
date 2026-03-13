@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import os
+import re
+import sqlite3
 from collections import OrderedDict
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from .db import connect, init_db
@@ -23,6 +27,34 @@ COLUMN_TO_STATUS = {
     'done': 'done',
 }
 PRIORITY_OPTIONS = ['low', 'medium', 'high', 'urgent']
+DEFAULT_WORKSPACE = Path(os.environ.get('OPENCLAW_WORKSPACE', str(Path.home() / '.openclaw' / 'workspace'))).expanduser()
+PROJECTS_ROOT = Path(os.environ.get('WORKCTL_PROJECTS_ROOT', str(DEFAULT_WORKSPACE / 'work' / 'projects'))).expanduser()
+CUSTOMERS_ROOT = Path(os.environ.get('WORKCTL_CUSTOMERS_ROOT', str(DEFAULT_WORKSPACE / 'work' / 'customers'))).expanduser()
+
+
+def now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+
+
+def slugify(text: str) -> str:
+    text = text.lower().strip()
+    text = re.sub(r'[^a-z0-9]+', '-', text)
+    text = re.sub(r'-+', '-', text).strip('-')
+    return text or 'item'
+
+
+def next_customer_code(conn: sqlite3.Connection) -> str:
+    row = conn.execute("SELECT customer_code FROM customers ORDER BY id DESC LIMIT 1").fetchone()
+    if not row:
+        return 'CUST0001'
+    return f"CUST{int(row['customer_code'][4:]) + 1:04d}"
+
+
+def next_project_id(conn: sqlite3.Connection) -> str:
+    row = conn.execute("SELECT id FROM projects ORDER BY id DESC LIMIT 1").fetchone()
+    if not row:
+        return 'PR0001'
+    return f"PR{int(row['id'][2:]) + 1:04d}"
 
 
 def normalize_board(board: str | None) -> str:
@@ -107,6 +139,55 @@ def build_filters(project_id: str = '', assignee: str = '', customer_name: str =
         'customer_name': (customer_name or '').strip(),
         'q': (q or '').strip(),
     }
+
+
+def create_customer_and_project(conn, *, customer_name: str, project_title: str, owner: str | None = None) -> str:
+    customer_name = customer_name.strip()
+    project_title = project_title.strip()
+    if not customer_name or not project_title:
+        raise ValueError('customer and project title are required')
+    row = conn.execute('SELECT id, customer_code, name FROM customers WHERE name = ?', (customer_name,)).fetchone()
+    if row:
+        customer_id = row['id']
+        customer_code = row['customer_code']
+    else:
+        customer_code = next_customer_code(conn)
+        cur = conn.execute(
+            '''
+            INSERT INTO customers(customer_code, customer_type, name)
+            VALUES (?, 'company', ?)
+            ''',
+            (customer_code, customer_name),
+        )
+        customer_id = cur.lastrowid
+        (CUSTOMERS_ROOT / customer_code).mkdir(parents=True, exist_ok=True)
+    project_id = next_project_id(conn)
+    slug = slugify(project_title)
+    folder = PROJECTS_ROOT / f'{project_id}-{slug}'
+    folder.mkdir(parents=True, exist_ok=True)
+    conn.execute(
+        '''
+        INSERT INTO projects(id, slug, customer_id, title, status, objective, summary, folder_path, owner)
+        VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?)
+        ''',
+        (project_id, slug, customer_id, project_title, f'Created inline from kanban for {customer_name}', None, str(folder), owner),
+    )
+    conn.execute(
+        "INSERT INTO project_events(project_id, event_type, note, metadata_json) VALUES (?, 'created', ?, ?)",
+        (project_id, 'Project created inline from kanban', '{"actor":"kanban","timestamp":"' + now_iso() + '"}'),
+    )
+    return project_id
+
+
+def resolve_project_id(conn, project_id: str | None, new_customer_name: str | None = None, new_project_title: str | None = None, owner: str | None = None) -> str:
+    project_id = (project_id or '').strip()
+    if project_id:
+        if not project_exists(conn, project_id):
+            raise ValueError(f'Unknown project: {project_id}')
+        return project_id
+    if (new_customer_name or '').strip() and (new_project_title or '').strip():
+        return create_customer_and_project(conn, customer_name=new_customer_name or '', project_title=new_project_title or '', owner=owner)
+    raise ValueError('select a project or create a new customer/project')
 
 
 def list_board_tasks(board: str = BOARD_NAME, *, filters: dict[str, str] | None = None) -> dict[str, list[dict[str, Any]]]:
@@ -205,11 +286,10 @@ def next_wip_order(conn, column_key: str, board: str = BOARD_NAME) -> float:
     return float(row['max_order'] or 0) + 10.0
 
 
-def create_task(*, title: str, project_id: str, column_key: str, description: str | None = None) -> int:
+def create_task(*, title: str, project_id: str, column_key: str, description: str | None = None, new_customer_name: str | None = None, new_project_title: str | None = None) -> int:
     with connect() as conn:
         init_db(conn)
-        if not project_exists(conn, project_id):
-            raise ValueError(f'Unknown project: {project_id}')
+        resolved_project_id = resolve_project_id(conn, project_id, new_customer_name, new_project_title, owner='kanban')
         normalized_column = normalize_column(column_key)
         wip_order = next_wip_order(conn, normalized_column)
         cur = conn.execute(
@@ -218,7 +298,7 @@ def create_task(*, title: str, project_id: str, column_key: str, description: st
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ''',
             (
-                project_id,
+                resolved_project_id,
                 title.strip(),
                 (description or '').strip() or None,
                 COLUMN_TO_STATUS[normalized_column],
@@ -275,14 +355,13 @@ def archive_task(task_id: int) -> None:
         conn.commit()
 
 
-def update_task(task_id: int, *, title: str, description: str | None, project_id: str, priority: str | None, assignee: str | None, due_at: str | None) -> None:
+def update_task(task_id: int, *, title: str, description: str | None, project_id: str, priority: str | None, assignee: str | None, due_at: str | None, new_customer_name: str | None = None, new_project_title: str | None = None) -> None:
     with connect() as conn:
         init_db(conn)
         task = conn.execute('SELECT id FROM tasks WHERE id = ?', (task_id,)).fetchone()
         if not task:
             raise ValueError(f'Unknown task: {task_id}')
-        if not project_exists(conn, project_id):
-            raise ValueError(f'Unknown project: {project_id}')
+        resolved_project_id = resolve_project_id(conn, project_id, new_customer_name, new_project_title, owner='kanban')
         normalized_priority = normalize_priority(priority)
         normalized_due_at = normalize_due_at(due_at)
         conn.execute(
@@ -294,7 +373,7 @@ def update_task(task_id: int, *, title: str, description: str | None, project_id
             (
                 title.strip(),
                 (description or '').strip() or None,
-                project_id,
+                resolved_project_id,
                 normalized_priority,
                 (assignee or '').strip() or None,
                 normalized_due_at,
@@ -332,18 +411,6 @@ def get_task(task_id: int) -> dict[str, Any] | None:
         if not row:
             return None
         task = decorate_task(dict(row))
-        task['comments'] = [
-            dict(comment)
-            for comment in conn.execute(
-                'SELECT id, comment_type, body, author, created_at FROM task_comments WHERE task_id=? ORDER BY created_at ASC, id ASC',
-                (task_id,),
-            ).fetchall()
-        ]
-        task['attachments'] = [
-            dict(attachment)
-            for attachment in conn.execute(
-                "SELECT id, file_path, mime_type, checksum, created_at FROM attachments WHERE entity_type='task' AND entity_ref=? ORDER BY created_at ASC, id ASC",
-                (str(task_id),),
-            ).fetchall()
-        ]
+        task['comments'] = [dict(comment) for comment in conn.execute('SELECT id, comment_type, body, author, created_at FROM task_comments WHERE task_id=? ORDER BY created_at ASC, id ASC', (task_id,)).fetchall()]
+        task['attachments'] = [dict(attachment) for attachment in conn.execute("SELECT id, file_path, mime_type, checksum, created_at FROM attachments WHERE entity_type='task' AND entity_ref=? ORDER BY created_at ASC, id ASC", (str(task_id),)).fetchall()]
         return task

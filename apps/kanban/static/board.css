@@ -87,6 +87,21 @@ h3 { font-size: 22px; margin-bottom: 10px; }
   display: flex;
   gap: 8px;
 }
+.inline-toggle {
+  width: auto;
+  justify-self: start;
+  font-size: 12px;
+  padding: 8px 10px;
+}
+.inline-toggle.is-active {
+  border-color: var(--text);
+  background: var(--panel-soft);
+}
+.inline-create-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
 
 .board-columns-grid {
   display: grid;
@@ -138,6 +153,8 @@ input, textarea, button, select {
   border: 1px solid var(--border);
   background: white;
   padding: 10px 12px;
+  border-radius: 0;
+  appearance: none;
   transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
 }
 input:focus, textarea:focus, button:focus, select:focus {
@@ -361,7 +378,8 @@ button:hover,
   h2 { font-size: 32px; }
   .filters-form,
   .board-columns-grid,
-  .detail-form-grid { grid-template-columns: 1fr; }
+  .detail-form-grid,
+  .inline-create-fields { grid-template-columns: 1fr; }
   .detail-drawer { width: 100vw; }
   .detail-card { padding: 22px 18px 30px; }
 }

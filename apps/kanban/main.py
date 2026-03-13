@@ -22,7 +22,7 @@ from .services import (
 )
 
 BASE_DIR = Path(__file__).resolve().parent
-app = FastAPI(title='openclaw-workos kanban', version='0.3.0')
+app = FastAPI(title='openclaw-workos kanban', version='0.4.0')
 app.mount('/static', StaticFiles(directory=str(BASE_DIR / 'static')), name='static')
 templates = Jinja2Templates(directory=str(BASE_DIR / 'templates'))
 
@@ -49,6 +49,19 @@ def render_board_response(request: Request, filters: dict[str, str] | None = Non
     return templates.TemplateResponse(request, template, board_context(request, filters))
 
 
+def task_detail_context(request: Request, task_id: int):
+    task = get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail='task not found')
+    return {
+        'request': request,
+        'task': task,
+        'columns': COLUMNS,
+        'projects': list_projects(),
+        'priority_options': PRIORITY_OPTIONS,
+    }
+
+
 @app.get('/', response_class=HTMLResponse)
 def root() -> RedirectResponse:
     return RedirectResponse(url='/board', status_code=302)
@@ -63,14 +76,23 @@ def board(request: Request, project_id: str = '', assignee: str = '', customer_n
 def board_task_create(
     request: Request,
     title: str = Form(...),
-    project_id: str = Form(...),
-    column_key: str = Form('backlog'),
+    project_id: str = Form(''),
     description: str = Form(''),
+    new_customer_name: str = Form(''),
+    new_project_title: str = Form(''),
+    column_key: str = Form('backlog'),
 ):
     if not title.strip():
         raise HTTPException(status_code=400, detail='title is required')
     try:
-        create_task(title=title, project_id=project_id.strip(), column_key=column_key, description=description)
+        create_task(
+            title=title,
+            project_id=project_id.strip(),
+            column_key=column_key,
+            description=description,
+            new_customer_name=new_customer_name,
+            new_project_title=new_project_title,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return render_board_response(request)
@@ -100,10 +122,12 @@ def board_task_update(
     task_id: int,
     title: str = Form(...),
     description: str = Form(''),
-    project_id: str = Form(...),
+    project_id: str = Form(''),
     priority: str = Form(''),
     assignee: str = Form(''),
     due_at: str = Form(''),
+    new_customer_name: str = Form(''),
+    new_project_title: str = Form(''),
 ):
     if not title.strip():
         raise HTTPException(status_code=400, detail='title is required')
@@ -116,26 +140,14 @@ def board_task_update(
             priority=priority,
             assignee=assignee,
             due_at=due_at,
+            new_customer_name=new_customer_name,
+            new_project_title=new_project_title,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    task = get_task(task_id)
-    if not task:
-        raise HTTPException(status_code=404, detail='task not found')
-    return templates.TemplateResponse(
-        request,
-        'partials/task_detail.html',
-        {'request': request, 'task': task, 'columns': COLUMNS, 'projects': list_projects(), 'priority_options': PRIORITY_OPTIONS},
-    )
+    return templates.TemplateResponse(request, 'partials/task_detail.html', task_detail_context(request, task_id))
 
 
 @app.get('/tasks/{task_id}', response_class=HTMLResponse)
 def task_detail(request: Request, task_id: int):
-    task = get_task(task_id)
-    if not task:
-        raise HTTPException(status_code=404, detail='task not found')
-    return templates.TemplateResponse(
-        request,
-        'partials/task_detail.html',
-        {'request': request, 'task': task, 'columns': COLUMNS, 'projects': list_projects(), 'priority_options': PRIORITY_OPTIONS},
-    )
+    return templates.TemplateResponse(request, 'partials/task_detail.html', task_detail_context(request, task_id))

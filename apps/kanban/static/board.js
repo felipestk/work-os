@@ -51,7 +51,19 @@ function resetFilters() {
   const form = document.querySelector('.filters-form');
   if (!form) return;
   form.querySelectorAll('input[type="text"]').forEach((input) => { input.value = ''; });
+  form.querySelectorAll('select').forEach((select) => { select.selectedIndex = 0; });
   if (window.htmx) window.htmx.trigger(form, 'submit');
+}
+
+function toggleInlineCreate(button) {
+  const form = button.closest('form');
+  if (!form) return;
+  const fields = form.querySelector('[data-inline-create-fields]');
+  if (!fields) return;
+  const isHidden = fields.hidden;
+  fields.hidden = !isHidden;
+  button.classList.toggle('is-active', isHidden);
+  button.textContent = isHidden ? '− Use existing project instead' : '+ Or create customer + project';
 }
 
 document.addEventListener('click', (event) => {
@@ -69,6 +81,9 @@ document.addEventListener('click', (event) => {
 
   const resetFiltersButton = event.target.closest('[data-reset-filters]');
   if (resetFiltersButton) return resetFilters();
+
+  const inlineCreateToggle = event.target.closest('[data-inline-create-toggle]');
+  if (inlineCreateToggle) return toggleInlineCreate(inlineCreateToggle);
 });
 
 document.body.addEventListener('htmx:afterSwap', (event) => {
