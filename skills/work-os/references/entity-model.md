@@ -13,4 +13,14 @@ Main work container. Keeps `PRxxxx` code.
 Commercial proposal tied to customer and optionally project.
 
 ## Activity
-Timeline record for notes, calls, emails, meetings, decisions, and summaries.
+Broader timeline record for notes, calls, emails, meetings, decisions, and summaries.
+
+## Task
+Optional project-linked work item for explicit task tracking or kanban workflows.
+
+Rules:
+- every task belongs to a project
+- customer context is inferred through the project
+- tasks are not part of the default workflow
+- tasks have their own comments thread
+- task attachments use the shared `attachments` model with `entity_type='task'`

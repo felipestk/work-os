@@ -112,7 +112,7 @@ CREATE TABLE IF NOT EXISTS activities (
   project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
   offer_id INTEGER REFERENCES offers(id) ON DELETE SET NULL,
   contact_id INTEGER REFERENCES contacts(id) ON DELETE SET NULL,
-  activity_type TEXT NOT NULL CHECK (activity_type IN ('note','email','call','meeting','whatsapp','telegram','decision','summary','task','other')),
+  activity_type TEXT NOT NULL CHECK (activity_type IN ('note','email','call','meeting','whatsapp','telegram','decision','summary','other')),
   direction TEXT CHECK (direction IN ('inbound','outbound','internal')),
   subject TEXT,
   body TEXT NOT NULL,
@@ -121,6 +121,33 @@ CREATE TABLE IF NOT EXISTS activities (
   message_id TEXT,
   dedup_hash TEXT,
   happened_at TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
+CREATE TABLE IF NOT EXISTS tasks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  parent_task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
+  title TEXT NOT NULL,
+  description TEXT,
+  status TEXT NOT NULL DEFAULT 'todo' CHECK (status IN ('todo','in_progress','blocked','done','cancelled','archived')),
+  priority TEXT CHECK (priority IN ('low','medium','high','urgent')),
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  due_at TEXT,
+  started_at TEXT,
+  completed_at TEXT,
+  assignee TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
+CREATE TABLE IF NOT EXISTS task_comments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  comment_type TEXT NOT NULL DEFAULT 'comment' CHECK (comment_type IN ('comment','system')),
+  body TEXT NOT NULL,
+  author TEXT,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
@@ -137,7 +164,7 @@ CREATE TABLE IF NOT EXISTS aliases (
 
 CREATE TABLE IF NOT EXISTS attachments (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  entity_type TEXT NOT NULL CHECK (entity_type IN ('activity','offer','customer','contact','project')),
+  entity_type TEXT NOT NULL CHECK (entity_type IN ('activity','offer','customer','contact','project','task')),
   entity_ref TEXT NOT NULL,
   file_path TEXT NOT NULL,
   mime_type TEXT,
@@ -158,6 +185,10 @@ CREATE INDEX IF NOT EXISTS idx_activities_customer_happened ON activities(custom
 CREATE INDEX IF NOT EXISTS idx_activities_project_happened ON activities(project_id, happened_at DESC);
 CREATE INDEX IF NOT EXISTS idx_activities_offer_happened ON activities(offer_id, happened_at DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_activities_dedup_hash ON activities(dedup_hash) WHERE dedup_hash IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_tasks_project_status_sort ON tasks(project_id, status, sort_order, id);
+CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_task_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_due_at ON tasks(due_at);
+CREATE INDEX IF NOT EXISTS idx_task_comments_task_created ON task_comments(task_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_aliases_alias ON aliases(alias);
 
 CREATE VIRTUAL TABLE IF NOT EXISTS activity_search USING fts5(subject, body, content='activities', content_rowid='id');

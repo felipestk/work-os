@@ -21,6 +21,9 @@ Current status: working early prototype based on PR0083 planning.
 - offer versions
 - offer line items
 - activities
+- optional tasks
+- task comments
+- shared attachments
 
 ## Goal
 This repo is meant to be sent to another OpenClaw host, installed there, and provide:
@@ -43,6 +46,18 @@ What this does:
 - links `workctl` into `~/.local/bin`
 - stores live DB/projects/customers under `~/.openclaw/workspace`
 - installs the `work-os` skill into `~/.openclaw/workspace/skills/work-os`
+
+## Task policy
+Tasks are intentionally optional.
+
+The default Work OS workflow is still:
+- customer
+- project
+- project event
+- offer
+- activity
+
+Use tasks only when explicit task tracking or future board/kanban workflows are needed.
 
 ## Repo-local demo/testing
 ```bash

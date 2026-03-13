@@ -35,6 +35,21 @@ workctl offer versions --offer QDEMO001 --table
 workctl offer show --offer QDEMO001 --version 2
 ```
 
+## Optional task workflow
+Use only when task tracking is explicitly needed.
+
+```bash
+workctl task create \
+  --project PR0002 \
+  --title "Prepare kanban model" \
+  --description "Draft first task entity and board mapping"
+
+workctl task list --project PR0002 --table
+workctl task show --task 1
+workctl task status --task 1 --status in_progress --note "Started implementation"
+workctl task comment add --task 1 --body "Need future board column mapping"
+```
+
 ## Search and review
 ```bash
 workctl search --keyword northwind --table

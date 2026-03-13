@@ -1,6 +1,6 @@
 ---
 name: work-os
-description: Unified customer, project, offer, and activity workflow for OpenClaw using the Work OS toolkit (`workctl`). Use when work should be tracked through reusable customer records, PR-coded projects, offer creation or revision, activity logging, or linked operational timelines inside an OpenClaw workspace.
+description: Unified customer, project, offer, activity, and optional task workflow for OpenClaw using the Work OS toolkit (`workctl`). Use when work should be tracked through reusable customer records, PR-coded projects, offer creation or revision, activity logging, or explicit task/board workflows inside an OpenClaw workspace.
 ---
 
 Use this skill when the task should be recorded in Work OS rather than handled as untracked ad-hoc work.
@@ -50,6 +50,21 @@ Use activities for notable communication and decisions:
 - important notes
 
 Do not log every trivial step. Log the moments that matter for continuity.
+
+## Task rule
+Tasks are **super optional**.
+Do not create or update tasks by default.
+
+Prefer projects, project events, and activities for normal execution logging.
+Use tasks only when:
+- the user explicitly asks for task tracking
+- the workflow is clearly task/board/kanban based
+- or a dedicated automation depends on task records
+
+When tasks are used:
+- link every task to a project
+- infer customer context through the project
+- keep task comments inside the task comment thread, not in activities, unless the comment also matters as a broader project/customer event
 
 ## Context discipline
 Keep the default command usage small.
