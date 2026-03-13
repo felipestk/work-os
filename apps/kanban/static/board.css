@@ -80,6 +80,7 @@ button { cursor: pointer; }
 .picker-option:first-child, .picker-create:first-child { border-top: none; }
 .picker-option strong, .picker-create { font-size: 12px; }
 .picker-option span { display: block; font-size: 12px; color: var(--soft); margin-top: 4px; }
+.picker-option:hover, .picker-create:hover, .picker-option.is-active, .picker-create.is-active { background: var(--panel-soft); }
 .picker-empty { padding: 10px 12px; color: var(--soft); font-size: 12px; }
 .task-stack { display: grid; gap: 12px; }
 .task-card { padding: 0; overflow: hidden; }

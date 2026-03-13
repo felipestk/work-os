@@ -105,6 +105,35 @@ function debounceSearch(input, callback) {
   input.dataset.searchTimer = String(timer);
 }
 
+function setActiveOption(results, index) {
+  const options = Array.from(results.querySelectorAll('[data-project-select], [data-customer-select], [data-open-project-create], [data-apply-customer-query]'));
+  options.forEach((option, i) => option.classList.toggle('is-active', i === index));
+  results.dataset.activeIndex = String(index);
+}
+
+function moveActiveOption(input, direction) {
+  const container = input.closest('[data-project-picker], [data-customer-picker]') || input.closest('form');
+  const results = container?.querySelector('[data-project-picker-results], [data-customer-picker-results]');
+  if (!results) return false;
+  const options = Array.from(results.querySelectorAll('[data-project-select], [data-customer-select], [data-open-project-create], [data-apply-customer-query]'));
+  if (!options.length) return false;
+  const current = Number(results.dataset.activeIndex || -1);
+  const next = current < 0 ? 0 : (current + direction + options.length) % options.length;
+  setActiveOption(results, next);
+  return true;
+}
+
+function activateCurrentOption(input) {
+  const container = input.closest('[data-project-picker], [data-customer-picker]') || input.closest('form');
+  const results = container?.querySelector('[data-project-picker-results], [data-customer-picker-results]');
+  if (!results) return false;
+  const index = Number(results.dataset.activeIndex || -1);
+  const options = Array.from(results.querySelectorAll('[data-project-select], [data-customer-select], [data-open-project-create], [data-apply-customer-query]'));
+  if (index < 0 || !options[index]) return false;
+  options[index].click();
+  return true;
+}
+
 function runProjectSearch(input) {
   const picker = input.closest('[data-project-picker]');
   const results = picker?.querySelector('[data-project-picker-results]');
@@ -112,7 +141,10 @@ function runProjectSearch(input) {
   if (!results || !searchUrl) return;
   const q = input.value || '';
   closeAllPickers(results);
-  debounceSearch(input, () => fetchInto(`${searchUrl}?q=${encodeURIComponent(q)}`, results));
+  debounceSearch(input, async () => {
+    await fetchInto(`${searchUrl}?q=${encodeURIComponent(q)}`, results);
+    results.dataset.activeIndex = '-1';
+  });
 }
 
 function runCustomerSearch(input) {
@@ -122,7 +154,10 @@ function runCustomerSearch(input) {
   if (!results || !searchUrl) return;
   const q = input.value || '';
   closeAllPickers(results);
-  debounceSearch(input, () => fetchInto(`${searchUrl}?q=${encodeURIComponent(q)}`, results));
+  debounceSearch(input, async () => {
+    await fetchInto(`${searchUrl}?q=${encodeURIComponent(q)}`, results);
+    results.dataset.activeIndex = '-1';
+  });
 }
 
 function autoSubmitFiltersFrom(element) {
@@ -217,6 +252,34 @@ document.addEventListener('focusin', (event) => {
   if (customerInput) return runCustomerSearch(customerInput);
 });
 
+document.addEventListener('keydown', (event) => {
+  const input = event.target.closest('[data-project-picker-input], [data-customer-picker-input]');
+  if (input) {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      moveActiveOption(input, 1);
+      return;
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      moveActiveOption(input, -1);
+      return;
+    }
+    if (event.key === 'Enter') {
+      if (activateCurrentOption(input)) {
+        event.preventDefault();
+        return;
+      }
+    }
+  }
+
+  if (event.key === 'Escape') {
+    closeDrawer(false);
+    closeProjectModal(false);
+    closeAllPickers();
+  }
+});
+
 document.addEventListener('click', (event) => {
   const close = event.target.closest('[data-detail-close]');
   if (close) return closeDrawer(true);
@@ -251,7 +314,7 @@ document.addEventListener('click', (event) => {
   const modalBackdrop = event.target.closest('[data-project-modal-backdrop]');
   if (modalBackdrop) return closeProjectModal();
 
-  const insidePicker = event.target.closest('[data-project-picker], [data-customer-picker-results], [data-project-modal]');
+  const insidePicker = event.target.closest('[data-project-picker], [data-customer-picker], [data-project-modal]');
   if (!insidePicker) closeAllPickers();
 });
 
@@ -263,13 +326,5 @@ document.body.addEventListener('htmx:afterSwap', (event) => {
     openProjectModal();
     const payload = target.querySelector('[data-created-project]');
     if (payload) consumeCreatedProject(payload);
-  }
-});
-
-document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape') {
-    closeDrawer(false);
-    closeProjectModal(false);
-    closeAllPickers();
   }
 });
