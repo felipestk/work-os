@@ -171,12 +171,12 @@ def board_task_comment_create(request: Request, task_id: int, body: str = Form(.
 
 
 @app.post('/board/tasks/{task_id}/attachments', response_class=HTMLResponse)
-async def board_task_attachment_create(request: Request, task_id: int, upload_file: UploadFile | None = File(None), file_path: str = Form(''), mime_type: str = Form('')):
+async def board_task_attachment_create(request: Request, task_id: int, upload_file: UploadFile | None = File(None), file_path: str = Form('')):
     try:
         if upload_file and upload_file.filename:
-            create_uploaded_task_attachment(task_id, filename=upload_file.filename, source=upload_file.file, mime_type=mime_type or upload_file.content_type)
+            create_uploaded_task_attachment(task_id, filename=upload_file.filename, source=upload_file.file, mime_type=upload_file.content_type)
         else:
-            add_task_attachment(task_id, file_path=file_path, mime_type=mime_type)
+            add_task_attachment(task_id, file_path=file_path, mime_type=None)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     finally:
