@@ -467,6 +467,12 @@ def safe_filename(name: str) -> str:
     return cleaned or 'attachment.bin'
 
 
+def human_attachment_name(path_or_name: str) -> str:
+    file_name = Path(path_or_name or '').name or str(path_or_name)
+    cleaned = re.sub(r'-[0-9a-f]{8}(\.[^.]+)$', r'\1', file_name)
+    return cleaned or file_name or 'attachment'
+
+
 def task_attachment_dir(conn: sqlite3.Connection, task_id: int) -> Path:
     row = conn.execute(
         '''
@@ -533,7 +539,7 @@ def add_task_attachment(task_id: int, *, file_path: str, mime_type: str | None =
         )
         conn.execute(
             "INSERT INTO task_comments(task_id, comment_type, body, author) VALUES (?, 'system', ?, 'kanban')",
-            (task_id, f'Attachment added: {resolved_path}'),
+            (task_id, f'Attachment added: {human_attachment_name(resolved_path)}'),
         )
         conn.commit()
         return int(cur.lastrowid)
@@ -555,7 +561,7 @@ def create_uploaded_task_attachment(task_id: int, *, filename: str, source, mime
         )
         conn.execute(
             "INSERT INTO task_comments(task_id, comment_type, body, author) VALUES (?, 'system', ?, 'kanban')",
-            (task_id, f"Attachment uploaded: {saved['file_path']}"),
+            (task_id, f"Attachment uploaded: {human_attachment_name(saved['file_path'])}"),
         )
         conn.commit()
         return int(cur.lastrowid)
@@ -576,7 +582,7 @@ def remove_task_attachment(task_id: int, attachment_id: int) -> None:
         conn.execute('DELETE FROM attachments WHERE id = ?', (attachment_id,))
         conn.execute(
             "INSERT INTO task_comments(task_id, comment_type, body, author) VALUES (?, 'system', ?, 'kanban')",
-            (task_id, f"Attachment removed: {attachment['file_path']}"),
+            (task_id, f"Attachment removed: {human_attachment_name(attachment['file_path'])}"),
         )
         conn.commit()
     try:
@@ -599,7 +605,7 @@ def get_task_attachment(task_id: int, attachment_id: int) -> dict[str, Any] | No
     attachment = dict(row)
     attachment_path = Path(attachment['file_path'])
     attachment['file_name'] = attachment_path.name or attachment['file_path']
-    attachment['download_name'] = re.sub(r'-[0-9a-f]{8}(\.[^.]+)$', r'\1', attachment['file_name'])
+    attachment['download_name'] = human_attachment_name(attachment['file_name'])
     return attachment
 
 
@@ -629,5 +635,5 @@ def get_task(task_id: int) -> dict[str, Any] | None:
         for attachment in task['attachments']:
             attachment_path = Path(attachment['file_path'])
             attachment['file_name'] = attachment_path.name or attachment['file_path']
-            attachment['download_name'] = re.sub(r'-[0-9a-f]{8}(\.[^.]+)$', r'\1', attachment['file_name'])
+            attachment['download_name'] = human_attachment_name(attachment['file_name'])
         return task
