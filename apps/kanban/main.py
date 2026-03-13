@@ -162,7 +162,7 @@ def board_task_update(request: Request, task_id: int, title: str = Form(...), de
 
 
 @app.post('/board/tasks/{task_id}/comments', response_class=HTMLResponse)
-def board_task_comment_create(request: Request, task_id: int, body: str = Form(...), author: str = Form('')):
+def board_task_comment_create(request: Request, task_id: int, body: str = Form(''), author: str = Form('')):
     try:
         add_task_comment(task_id, body=body, author=author)
     except ValueError as exc:
