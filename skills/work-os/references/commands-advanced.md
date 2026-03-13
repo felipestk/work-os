@@ -12,16 +12,6 @@ workctl offer item add \
   --unit project \
   --unit-price 2500 \
   --tax-rate 23
-
-workctl offer item list --offer QDEMO001 --table
-
-workctl offer item update \
-  --item-id 3 \
-  --unit-price 500
-
-workctl offer item remove --item-id 3
-
-workctl offer totals recalc --offer QDEMO001
 ```
 
 ## Optional task workflow
@@ -47,11 +37,18 @@ workctl task move \
   --board delivery \
   --column-key doing \
   --wip-order 20 \
-  --status in_progress \
-  --note "Started implementation"
+  --status in_progress
 
-workctl task show --task 1
-workctl task comment add --task 1 --body "Need future board column mapping"
+workctl task archive --task 1 --note "Paused / not active"
+workctl task unarchive --task 1 --status todo
+```
+
+## Task filtering
+```bash
+workctl task list --project PR0002 --board delivery --column-key doing --table
+workctl task list --assignee Claw --table
+workctl task list --due-before 2026-03-31T23:59:59Z --table
+workctl task list --include-archived --table
 ```
 
 ## Attach files to tracked entities
@@ -60,25 +57,16 @@ workctl attach add --entity-type task --entity-ref 1 --file ./spec.md --mime-typ
 workctl attach list --entity-type task --entity-ref 1 --table
 workctl attach show --attachment-id 1
 workctl attach remove --attachment-id 1
+```
 
-workctl attach add --entity-type project --entity-ref PR0002 --file ./brief.pdf
-workctl attach add --entity-type offer --entity-ref QDEMO001 --file ./quote.pdf
+## Enriched project review
+```bash
+workctl project show --project PR0002 --include-tasks --include-attachments
+workctl project show --project PR0002 --include-tasks --include-archived-tasks
 ```
 
 ## Search and review
 ```bash
 workctl search --keyword northwind --table
-workctl project show --project PR0002
-workctl customer show --customer "Northwind Systems"
-workctl offer show --offer QDEMO001
 workctl task show --task 1
 ```
-
-## Runtime/path assumptions
-Normal installed usage expects:
-- toolkit under `~/.local/share/openclaw-workos`
-- runtime DB under `~/.openclaw/workspace/ops/workos/workos.db`
-- projects under `~/.openclaw/workspace/work/projects`
-- customers under `~/.openclaw/workspace/work/customers`
-
-These may be overridden through environment variables when needed.

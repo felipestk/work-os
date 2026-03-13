@@ -336,7 +336,20 @@ def cmd_project_show(args):
     with connect() as conn:
         init_db(conn)
         row = require_project(conn, args.project)
-    print(json.dumps(dict(row), indent=2, ensure_ascii=False))
+        out = dict(row)
+        if args.include_tasks:
+            q = "SELECT id, parent_task_id, title, status, priority, board, column_key, wip_order, assignee, due_at, updated_at FROM tasks WHERE project_id=?"
+            params = [args.project]
+            if not args.include_archived_tasks:
+                q += " AND status != 'archived'"
+            q += " ORDER BY COALESCE(board,''), COALESCE(column_key,''), COALESCE(wip_order, sort_order), id"
+            out['tasks'] = [dict(r) for r in conn.execute(q, params)]
+        if args.include_attachments:
+            out['attachments'] = [dict(r) for r in conn.execute(
+                "SELECT id, file_path, mime_type, checksum, created_at FROM attachments WHERE entity_type='project' AND entity_ref=? ORDER BY created_at ASC, id ASC",
+                (args.project,),
+            )]
+    print(json.dumps(out, indent=2, ensure_ascii=False))
 
 
 def cmd_project_event(args):
@@ -705,6 +718,26 @@ def cmd_task_list(args):
         if args.status:
             where.append('t.status = ?')
             params.append(args.status)
+        elif not args.include_archived:
+            where.append("t.status != 'archived'")
+        if args.board:
+            where.append('t.board = ?')
+            params.append(args.board)
+        if args.column_key:
+            where.append('t.column_key = ?')
+            params.append(args.column_key)
+        if args.assignee:
+            where.append('t.assignee = ?')
+            params.append(args.assignee)
+        if args.parent_task_id is not None:
+            where.append('t.parent_task_id = ?')
+            params.append(args.parent_task_id)
+        if args.due_before:
+            where.append('t.due_at IS NOT NULL AND t.due_at <= ?')
+            params.append(args.due_before)
+        if args.due_after:
+            where.append('t.due_at IS NOT NULL AND t.due_at >= ?')
+            params.append(args.due_after)
         if where:
             q += ' WHERE ' + ' AND '.join(where)
         q += " ORDER BY t.project_id, COALESCE(t.board, ''), COALESCE(t.column_key, ''), COALESCE(t.wip_order, t.sort_order), t.id LIMIT ?"
@@ -827,6 +860,36 @@ def cmd_task_move(args):
         conn.commit()
     print(json.dumps({'id': args.task, 'board': board, 'column_key': column_key, 'wip_order': wip_order, 'status': status}))
 
+
+
+
+def cmd_task_archive(args):
+    with connect() as conn:
+        init_db(conn)
+        task = require_task(conn, args.task)
+        conn.execute("UPDATE tasks SET status='archived' WHERE id=?", (args.task,))
+        note = args.note or 'Task archived'
+        conn.execute(
+            "INSERT INTO task_comments(task_id, comment_type, body, author) VALUES (?, 'system', ?, ?)",
+            (args.task, note, 'workctl'),
+        )
+        conn.commit()
+    print(json.dumps({'id': args.task, 'old_status': task['status'], 'new_status': 'archived'}))
+
+
+def cmd_task_unarchive(args):
+    with connect() as conn:
+        init_db(conn)
+        task = require_task(conn, args.task)
+        new_status = args.status or 'todo'
+        conn.execute('UPDATE tasks SET status=? WHERE id=?', (new_status, args.task))
+        note = args.note or f'Task unarchived to {new_status}'
+        conn.execute(
+            "INSERT INTO task_comments(task_id, comment_type, body, author) VALUES (?, 'system', ?, ?)",
+            (args.task, note, 'workctl'),
+        )
+        conn.commit()
+    print(json.dumps({'id': args.task, 'old_status': task['status'], 'new_status': new_status}))
 
 def cmd_attach_add(args):
     with connect() as conn:
@@ -975,6 +1038,9 @@ def build_parser():
 
     sp = psub.add_parser('show')
     sp.add_argument('--project', required=True)
+    sp.add_argument('--include-tasks', action='store_true')
+    sp.add_argument('--include-archived-tasks', action='store_true')
+    sp.add_argument('--include-attachments', action='store_true')
     sp.set_defaults(func=cmd_project_show)
 
     sp = psub.add_parser('event')
@@ -1064,6 +1130,13 @@ def build_parser():
     sp = tsub.add_parser('list')
     sp.add_argument('--project')
     sp.add_argument('--status', choices=['todo', 'in_progress', 'blocked', 'done', 'cancelled', 'archived'])
+    sp.add_argument('--board')
+    sp.add_argument('--column-key')
+    sp.add_argument('--assignee')
+    sp.add_argument('--parent-task-id', type=int)
+    sp.add_argument('--due-before')
+    sp.add_argument('--due-after')
+    sp.add_argument('--include-archived', action='store_true')
     sp.add_argument('--limit', type=int, default=50)
     sp.add_argument('--table', action='store_true')
     sp.set_defaults(func=cmd_task_list)
@@ -1096,6 +1169,17 @@ def build_parser():
     sp.add_argument('--completed-at')
     sp.add_argument('--note')
     sp.set_defaults(func=cmd_task_move)
+
+    sp = tsub.add_parser('archive')
+    sp.add_argument('--task', type=int, required=True)
+    sp.add_argument('--note')
+    sp.set_defaults(func=cmd_task_archive)
+
+    sp = tsub.add_parser('unarchive')
+    sp.add_argument('--task', type=int, required=True)
+    sp.add_argument('--status', choices=['todo', 'in_progress', 'blocked', 'done', 'cancelled'])
+    sp.add_argument('--note')
+    sp.set_defaults(func=cmd_task_unarchive)
 
     sp = tsub.add_parser('status')
     sp.add_argument('--task', type=int, required=True)
