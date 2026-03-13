@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import hashlib
+import mimetypes
 import os
 import re
+import shutil
 import sqlite3
+import uuid
 from collections import OrderedDict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -457,6 +460,47 @@ def file_checksum(file_path: Path) -> str:
     return digest.hexdigest()
 
 
+def safe_filename(name: str) -> str:
+    cleaned = Path(name or '').name.strip()
+    cleaned = re.sub(r'[^A-Za-z0-9._-]+', '-', cleaned)
+    cleaned = re.sub(r'-+', '-', cleaned).strip('-')
+    return cleaned or 'attachment.bin'
+
+
+def task_attachment_dir(conn: sqlite3.Connection, task_id: int) -> Path:
+    row = conn.execute(
+        '''
+        SELECT t.id, p.folder_path
+        FROM tasks t
+        JOIN projects p ON p.id = t.project_id
+        WHERE t.id = ?
+        ''',
+        (task_id,),
+    ).fetchone()
+    if not row:
+        raise ValueError(f'Unknown task: {task_id}')
+    project_folder = Path(row['folder_path']) if row['folder_path'] else PROJECTS_ROOT / f'unknown-project-{task_id}'
+    target = project_folder / 'tasks' / str(task_id) / 'attachments'
+    target.mkdir(parents=True, exist_ok=True)
+    return target
+
+
+def save_uploaded_task_attachment(task_id: int, *, filename: str, source) -> dict[str, str | None]:
+    cleaned_name = safe_filename(filename)
+    with connect() as conn:
+        init_db(conn)
+        target_dir = task_attachment_dir(conn, task_id)
+    stem = Path(cleaned_name).stem or 'attachment'
+    suffix = Path(cleaned_name).suffix
+    stored_name = f"{stem}-{uuid.uuid4().hex[:8]}{suffix}"
+    destination = target_dir / stored_name
+    with destination.open('wb') as handle:
+        shutil.copyfileobj(source, handle)
+    guessed_mime = mimetypes.guess_type(destination.name)[0]
+    checksum = file_checksum(destination)
+    return {'file_path': str(destination), 'mime_type': guessed_mime, 'checksum': checksum}
+
+
 def add_task_attachment(task_id: int, *, file_path: str, mime_type: str | None = None) -> int:
     raw_path = (file_path or '').strip()
     cleaned_mime_type = (mime_type or '').strip() or None
@@ -495,6 +539,28 @@ def add_task_attachment(task_id: int, *, file_path: str, mime_type: str | None =
         return int(cur.lastrowid)
 
 
+def create_uploaded_task_attachment(task_id: int, *, filename: str, source, mime_type: str | None = None) -> int:
+    with connect() as conn:
+        init_db(conn)
+        task = conn.execute('SELECT id FROM tasks WHERE id = ?', (task_id,)).fetchone()
+        if not task:
+            raise ValueError(f'Unknown task: {task_id}')
+    saved = save_uploaded_task_attachment(task_id, filename=filename, source=source)
+    final_mime_type = (mime_type or '').strip() or saved['mime_type']
+    with connect() as conn:
+        init_db(conn)
+        cur = conn.execute(
+            'INSERT INTO attachments(entity_type, entity_ref, file_path, mime_type, checksum) VALUES (?, ?, ?, ?, ?)',
+            ('task', str(task_id), saved['file_path'], final_mime_type, saved['checksum']),
+        )
+        conn.execute(
+            "INSERT INTO task_comments(task_id, comment_type, body, author) VALUES (?, 'system', ?, 'kanban')",
+            (task_id, f"Attachment uploaded: {saved['file_path']}"),
+        )
+        conn.commit()
+        return int(cur.lastrowid)
+
+
 def remove_task_attachment(task_id: int, attachment_id: int) -> None:
     with connect() as conn:
         init_db(conn)
@@ -513,6 +579,12 @@ def remove_task_attachment(task_id: int, attachment_id: int) -> None:
             (task_id, f"Attachment removed: {attachment['file_path']}"),
         )
         conn.commit()
+    try:
+        attachment_path = Path(attachment['file_path'])
+        if attachment_path.exists() and attachment_path.is_file():
+            attachment_path.unlink()
+    except OSError:
+        pass
 
 
 def get_task(task_id: int) -> dict[str, Any] | None:

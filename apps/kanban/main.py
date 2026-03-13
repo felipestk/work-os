@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from fastapi import FastAPI, Form, HTTPException, Query, Request
+from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -11,6 +11,7 @@ from .services import (
     PRIORITY_OPTIONS,
     add_task_attachment,
     add_task_comment,
+    create_uploaded_task_attachment,
     archive_task,
     build_filters,
     column_counts,
@@ -170,11 +171,17 @@ def board_task_comment_create(request: Request, task_id: int, body: str = Form(.
 
 
 @app.post('/board/tasks/{task_id}/attachments', response_class=HTMLResponse)
-def board_task_attachment_create(request: Request, task_id: int, file_path: str = Form(...), mime_type: str = Form('')):
+async def board_task_attachment_create(request: Request, task_id: int, upload_file: UploadFile | None = File(None), file_path: str = Form(''), mime_type: str = Form('')):
     try:
-        add_task_attachment(task_id, file_path=file_path, mime_type=mime_type)
+        if upload_file and upload_file.filename:
+            create_uploaded_task_attachment(task_id, filename=upload_file.filename, source=upload_file.file, mime_type=mime_type or upload_file.content_type)
+        else:
+            add_task_attachment(task_id, file_path=file_path, mime_type=mime_type)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        if upload_file is not None:
+            await upload_file.close()
     return templates.TemplateResponse(request, 'partials/task_detail.html', task_detail_context(request, task_id))
 
 

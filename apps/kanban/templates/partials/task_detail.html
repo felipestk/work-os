@@ -117,10 +117,15 @@
 
   <section class="detail-section">
     <p class="section-kicker">Attachments</p>
-    <form class="detail-attachment-form" hx-post="/board/tasks/{{ task.id }}/attachments" hx-target="[data-detail-panel]" hx-swap="innerHTML">
+    <form class="detail-attachment-form" hx-post="/board/tasks/{{ task.id }}/attachments" hx-target="[data-detail-panel]" hx-swap="innerHTML" enctype="multipart/form-data">
       <label>
-        <span>File path or URL</span>
-        <input type="text" name="file_path" placeholder="/root/.openclaw/workspace/path/to/file.txt or https://..." required>
+        <span>Upload file</span>
+        <input type="file" name="upload_file">
+      </label>
+      <p class="detail-helper-text">Or attach by server path / URL if you want to reference something that already exists.</p>
+      <label>
+        <span>Existing file path or URL</span>
+        <input type="text" name="file_path" placeholder="/root/.openclaw/workspace/path/to/file.txt or https://...">
       </label>
       <label>
         <span>MIME type</span>
