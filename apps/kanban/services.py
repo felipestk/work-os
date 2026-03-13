@@ -117,10 +117,24 @@ def list_projects() -> list[dict[str, Any]]:
 
 def search_projects(query: str = '', limit: int = 10) -> list[dict[str, Any]]:
     query = (query or '').strip()
+    project_id_match = re.match(r'^(PR\d{4})\b', query, re.IGNORECASE)
+    normalized_project_id = project_id_match.group(1).upper() if project_id_match else None
     like = f'%{query}%'
     with connect() as conn:
         init_db(conn)
-        if query:
+        if normalized_project_id:
+            rows = conn.execute(
+                '''
+                SELECT p.id, p.title, c.name AS customer_name
+                FROM projects p
+                JOIN customers c ON c.id = p.customer_id
+                WHERE p.id = ? OR p.id LIKE ? OR p.title LIKE ? OR c.name LIKE ?
+                ORDER BY CASE WHEN p.id = ? THEN 0 ELSE 1 END, p.id DESC
+                LIMIT ?
+                ''',
+                (normalized_project_id, f'%{normalized_project_id}%', like, like, normalized_project_id, limit),
+            ).fetchall()
+        elif query:
             rows = conn.execute(
                 '''
                 SELECT p.id, p.title, c.name AS customer_name
