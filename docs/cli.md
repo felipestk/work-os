@@ -18,8 +18,8 @@
 - `project create|list|show|event|status`
 - `offer create|list|show|versions|status|revise|item add|list|update|remove|totals recalc`
 - `activity add|list`
-- `attach add|list`
-- `task create|list|show|status|comment add`
+- `attach add|list|show|remove`
+- `task create|list|show|update|move|status|comment add`
 
 ## Task command policy
 Tasks are supported, but intentionally optional.
@@ -36,6 +36,8 @@ Use task commands only when the user explicitly wants task tracking or when oper
 ```bash
 workctl attach add --entity-type task --entity-ref 1 --file ./spec.md --mime-type text/markdown
 workctl attach list --entity-type task --entity-ref 1 --table
+workctl attach show --attachment-id 1
+workctl attach remove --attachment-id 1
 
 workctl attach add --entity-type project --entity-ref PR0002 --file ./brief.pdf
 workctl attach list --entity-type project --entity-ref PR0002 --table
@@ -54,8 +56,8 @@ workctl task create \
   --column-key todo \
   --wip-order 10
 
-workctl task list --project PR0002 --table
+workctl task update --task 1 --title "Prepare task model" --priority high --assignee "Claw"
+workctl task move --task 1 --board delivery --column-key doing --wip-order 20 --status in_progress --note "Started schema pass"
 workctl task show --task 1
-workctl task status --task 1 --status in_progress --board delivery --column-key doing --wip-order 20 --note "Started schema pass"
 workctl task comment add --task 1 --body "Need board column mapping later"
 ```

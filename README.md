@@ -28,6 +28,8 @@ Current status: working early prototype based on PR0083 planning.
 - task comments
 - shared attachments
 - minimal kanban fields on tasks (`board`, `column_key`, `wip_order`)
+- task update/move helpers
+- attachment show/remove helpers
 
 ## Goal
 This repo is meant to be sent to another OpenClaw host, installed there, and provide:
@@ -65,6 +67,7 @@ Use tasks only when explicit task tracking or board/kanban workflows are needed.
 
 ## Attachment policy
 Use the shared attachment model to connect files to tasks, projects, offers, and other supported entities.
+Attachment management includes add/list/show/remove flows.
 
 ## Repo-local demo/testing
 ```bash

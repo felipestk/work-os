@@ -36,9 +36,21 @@ workctl task create \
   --column-key todo \
   --wip-order 10
 
-workctl task list --project PR0002 --table
+workctl task update \
+  --task 1 \
+  --title "Prepare task model" \
+  --priority high \
+  --assignee "Claw"
+
+workctl task move \
+  --task 1 \
+  --board delivery \
+  --column-key doing \
+  --wip-order 20 \
+  --status in_progress \
+  --note "Started implementation"
+
 workctl task show --task 1
-workctl task status --task 1 --status in_progress --board delivery --column-key doing --wip-order 20 --note "Started implementation"
 workctl task comment add --task 1 --body "Need future board column mapping"
 ```
 
@@ -46,6 +58,8 @@ workctl task comment add --task 1 --body "Need future board column mapping"
 ```bash
 workctl attach add --entity-type task --entity-ref 1 --file ./spec.md --mime-type text/markdown
 workctl attach list --entity-type task --entity-ref 1 --table
+workctl attach show --attachment-id 1
+workctl attach remove --attachment-id 1
 
 workctl attach add --entity-type project --entity-ref PR0002 --file ./brief.pdf
 workctl attach add --entity-type offer --entity-ref QDEMO001 --file ./quote.pdf

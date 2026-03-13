@@ -768,6 +768,66 @@ def cmd_task_comment_add(args):
         conn.commit()
     print(json.dumps({'id': cur.lastrowid, 'task_id': args.task, 'comment_type': args.comment_type}))
 
+def cmd_task_update(args):
+    with connect() as conn:
+        init_db(conn)
+        task = require_task(conn, args.task)
+        title = args.title if args.title is not None else task['title']
+        description = args.description if args.description is not None else task['description']
+        priority = args.priority if args.priority is not None else task['priority']
+        assignee = args.assignee if args.assignee is not None else task['assignee']
+        due_at = args.due_at if args.due_at is not None else task['due_at']
+        parent_task_id = args.parent_task_id if args.parent_task_id is not None else task['parent_task_id']
+        board = args.board if args.board is not None else task['board']
+        column_key = args.column_key if args.column_key is not None else task['column_key']
+        wip_order = args.wip_order if args.wip_order is not None else task['wip_order']
+        sort_order = args.sort_order if args.sort_order is not None else task['sort_order']
+        if parent_task_id is not None:
+            if int(parent_task_id) == int(args.task):
+                raise ValueError('task cannot be its own parent')
+            require_task(conn, int(parent_task_id))
+        conn.execute(
+            'UPDATE tasks SET parent_task_id=?, title=?, description=?, priority=?, assignee=?, due_at=?, board=?, column_key=?, wip_order=?, sort_order=? WHERE id=?',
+            (parent_task_id, title, description, priority, assignee, due_at, board, column_key, wip_order, sort_order, args.task),
+        )
+        if args.note:
+            conn.execute(
+                "INSERT INTO task_comments(task_id, comment_type, body, author) VALUES (?, 'system', ?, ?)",
+                (args.task, args.note, 'workctl'),
+            )
+        conn.commit()
+    print(json.dumps({'id': args.task, 'title': title, 'priority': priority, 'board': board, 'column_key': column_key}))
+
+
+def cmd_task_move(args):
+    with connect() as conn:
+        init_db(conn)
+        task = require_task(conn, args.task)
+        board = args.board if args.board is not None else task['board']
+        column_key = args.column_key if args.column_key is not None else task['column_key']
+        wip_order = args.wip_order if args.wip_order is not None else task['wip_order']
+        status = args.status if args.status is not None else task['status']
+        started_at = task['started_at']
+        completed_at = task['completed_at']
+        if status == 'in_progress' and not started_at:
+            started_at = now_iso()
+        if status == 'done':
+            completed_at = args.completed_at or now_iso()
+            if not started_at:
+                started_at = completed_at
+        conn.execute(
+            'UPDATE tasks SET board=?, column_key=?, wip_order=?, status=?, started_at=?, completed_at=? WHERE id=?',
+            (board, column_key, wip_order, status, started_at, completed_at, args.task),
+        )
+        if args.note:
+            conn.execute(
+                "INSERT INTO task_comments(task_id, comment_type, body, author) VALUES (?, 'system', ?, ?)",
+                (args.task, args.note, 'workctl'),
+            )
+        conn.commit()
+    print(json.dumps({'id': args.task, 'board': board, 'column_key': column_key, 'wip_order': wip_order, 'status': status}))
+
+
 def cmd_attach_add(args):
     with connect() as conn:
         init_db(conn)
@@ -793,6 +853,27 @@ def cmd_attach_list(args):
             (args.entity_type, str(args.entity_ref)),
         )]
     print_rows(rows, table=args.table)
+
+
+def cmd_attach_show(args):
+    with connect() as conn:
+        init_db(conn)
+        row = conn.execute('SELECT * FROM attachments WHERE id=?', (args.attachment_id,)).fetchone()
+        if not row:
+            raise ValueError(f"Unknown attachment: {args.attachment_id}")
+        ensure_attachment_entity(conn, row['entity_type'], row['entity_ref'])
+    print(json.dumps(dict(row), indent=2, ensure_ascii=False))
+
+
+def cmd_attach_remove(args):
+    with connect() as conn:
+        init_db(conn)
+        row = conn.execute('SELECT * FROM attachments WHERE id=?', (args.attachment_id,)).fetchone()
+        if not row:
+            raise ValueError(f"Unknown attachment: {args.attachment_id}")
+        conn.execute('DELETE FROM attachments WHERE id=?', (args.attachment_id,))
+        conn.commit()
+    print(json.dumps({'ok': True, 'attachment_id': args.attachment_id, 'entity_type': row['entity_type'], 'entity_ref': row['entity_ref']}))
 
 
 def cmd_search(args):
@@ -951,6 +1032,14 @@ def build_parser():
     sp.add_argument('--table', action='store_true')
     sp.set_defaults(func=cmd_attach_list)
 
+    sp = atsub.add_parser('show')
+    sp.add_argument('--attachment-id', type=int, required=True)
+    sp.set_defaults(func=cmd_attach_show)
+
+    sp = atsub.add_parser('remove')
+    sp.add_argument('--attachment-id', type=int, required=True)
+    sp.set_defaults(func=cmd_attach_remove)
+
     task = sub.add_parser('task')
     tsub = task.add_subparsers(dest='sub', required=True)
 
@@ -982,6 +1071,31 @@ def build_parser():
     sp = tsub.add_parser('show')
     sp.add_argument('--task', type=int, required=True)
     sp.set_defaults(func=cmd_task_show)
+
+    sp = tsub.add_parser('update')
+    sp.add_argument('--task', type=int, required=True)
+    sp.add_argument('--parent-task-id', type=int)
+    sp.add_argument('--title')
+    sp.add_argument('--description')
+    sp.add_argument('--priority', choices=['low', 'medium', 'high', 'urgent'])
+    sp.add_argument('--assignee')
+    sp.add_argument('--due-at')
+    sp.add_argument('--board')
+    sp.add_argument('--column-key')
+    sp.add_argument('--wip-order', type=float)
+    sp.add_argument('--sort-order', type=int)
+    sp.add_argument('--note')
+    sp.set_defaults(func=cmd_task_update)
+
+    sp = tsub.add_parser('move')
+    sp.add_argument('--task', type=int, required=True)
+    sp.add_argument('--board')
+    sp.add_argument('--column-key')
+    sp.add_argument('--wip-order', type=float)
+    sp.add_argument('--status', choices=['todo', 'in_progress', 'blocked', 'done', 'cancelled', 'archived'])
+    sp.add_argument('--completed-at')
+    sp.add_argument('--note')
+    sp.set_defaults(func=cmd_task_move)
 
     sp = tsub.add_parser('status')
     sp.add_argument('--task', type=int, required=True)
