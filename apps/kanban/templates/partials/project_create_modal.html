@@ -15,10 +15,7 @@
            placeholder="Search or add customer"
            autocomplete="off"
            data-customer-picker-input
-           hx-get="/board/customers/search"
-           hx-trigger="keyup changed delay:200ms, focus"
-           hx-target="next [data-customer-picker-results]"
-           hx-include="this">
+           data-search-url="/board/customers/search">
     <div class="picker-results" data-customer-picker-results>
       {% include 'partials/customer_picker_results.html' %}
     </div>

@@ -80,6 +80,37 @@ function resetFilters() {
   if (window.htmx) window.htmx.trigger(form, 'submit');
 }
 
+async function fetchInto(url, resultsEl) {
+  const response = await fetch(url, { headers: { 'X-Requested-With': 'fetch' } });
+  if (!response.ok) return;
+  resultsEl.innerHTML = await response.text();
+}
+
+function debounceSearch(input, callback) {
+  const existing = input.dataset.searchTimer;
+  if (existing) clearTimeout(Number(existing));
+  const timer = setTimeout(callback, 180);
+  input.dataset.searchTimer = String(timer);
+}
+
+function runProjectSearch(input) {
+  const picker = input.closest('[data-project-picker]');
+  const results = picker?.querySelector('[data-project-picker-results]');
+  const searchUrl = input.dataset.searchUrl;
+  if (!results || !searchUrl) return;
+  const q = input.value || '';
+  debounceSearch(input, () => fetchInto(`${searchUrl}?q=${encodeURIComponent(q)}`, results));
+}
+
+function runCustomerSearch(input) {
+  const form = input.closest('form');
+  const results = form?.querySelector('[data-customer-picker-results]');
+  const searchUrl = input.dataset.searchUrl;
+  if (!results || !searchUrl) return;
+  const q = input.value || '';
+  debounceSearch(input, () => fetchInto(`${searchUrl}?q=${encodeURIComponent(q)}`, results));
+}
+
 function applyProjectSelection(button) {
   const picker = button.closest('[data-project-picker]');
   if (!picker) return;
@@ -122,7 +153,7 @@ function openProjectCreateFromPicker(button) {
   setTimeout(() => {
     const titleInput = panel.querySelector('input[name="project_title"]');
     if (titleInput && query) titleInput.value = query;
-  }, 50);
+  }, 80);
 }
 
 function consumeCreatedProject(payload) {
@@ -145,6 +176,20 @@ function consumeCreatedProject(payload) {
   }
   closeProjectModal();
 }
+
+document.addEventListener('input', (event) => {
+  const projectInput = event.target.closest('[data-project-picker-input]');
+  if (projectInput) return runProjectSearch(projectInput);
+  const customerInput = event.target.closest('[data-customer-picker-input]');
+  if (customerInput) return runCustomerSearch(customerInput);
+});
+
+document.addEventListener('focusin', (event) => {
+  const projectInput = event.target.closest('[data-project-picker-input]');
+  if (projectInput) return runProjectSearch(projectInput);
+  const customerInput = event.target.closest('[data-customer-picker-input]');
+  if (customerInput) return runCustomerSearch(customerInput);
+});
 
 document.addEventListener('click', (event) => {
   const close = event.target.closest('[data-detail-close]');

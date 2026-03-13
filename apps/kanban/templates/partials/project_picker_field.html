@@ -8,10 +8,7 @@
          placeholder="Search project"
          autocomplete="off"
          data-project-picker-input
-         hx-get="/board/projects/search"
-         hx-trigger="keyup changed delay:200ms, focus"
-         hx-target="next [data-project-picker-results]"
-         hx-include="this"
+         data-search-url="/board/projects/search"
          name="q">
   <div class="picker-results" data-project-picker-results></div>
 </div>
