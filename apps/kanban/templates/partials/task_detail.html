@@ -120,12 +120,7 @@
     <form class="detail-attachment-form" hx-post="/board/tasks/{{ task.id }}/attachments" hx-target="[data-detail-panel]" hx-swap="innerHTML" enctype="multipart/form-data">
       <label>
         <span>Upload file</span>
-        <input type="file" name="upload_file">
-      </label>
-      <p class="detail-helper-text">Or attach by server path / URL if you want to reference something that already exists.</p>
-      <label>
-        <span>Existing file path or URL</span>
-        <input type="text" name="file_path" placeholder="/root/.openclaw/workspace/path/to/file.txt or https://...">
+        <input type="file" name="upload_file" required>
       </label>
       <div class="detail-edit-actions">
         <button type="submit" class="secondary-button">Add attachment</button>
@@ -137,10 +132,13 @@
         {% for attachment in task.attachments %}
           <li>
             <div class="attachment-row">
-              <div class="attachment-copy">
-                <span class="attachment-path">{{ attachment.file_path }}</span>
-                <span class="attachment-meta">{{ attachment.mime_type or 'unknown type' }} · {{ attachment.created_at }}</span>
-              </div>
+              <a class="attachment-link" href="/board/tasks/{{ task.id }}/attachments/{{ attachment.id }}/download">
+                <span class="attachment-icon" aria-hidden="true">📄</span>
+                <span class="attachment-copy">
+                  <span class="attachment-name">{{ attachment.download_name }}</span>
+                  <span class="attachment-meta">{{ attachment.created_at }}</span>
+                </span>
+              </a>
               <form hx-post="/board/tasks/{{ task.id }}/attachments/{{ attachment.id }}/remove" hx-target="[data-detail-panel]" hx-swap="innerHTML">
                 <button type="submit" class="ghost-button">remove</button>
               </form>

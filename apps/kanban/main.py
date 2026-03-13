@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -9,7 +9,6 @@ from .services import (
     BOARD_NAME,
     COLUMNS,
     PRIORITY_OPTIONS,
-    add_task_attachment,
     add_task_comment,
     create_uploaded_task_attachment,
     archive_task,
@@ -18,6 +17,7 @@ from .services import (
     create_customer_and_project,
     create_task,
     get_task,
+    get_task_attachment,
     list_board_tasks,
     list_projects,
     move_task,
@@ -171,12 +171,11 @@ def board_task_comment_create(request: Request, task_id: int, body: str = Form(.
 
 
 @app.post('/board/tasks/{task_id}/attachments', response_class=HTMLResponse)
-async def board_task_attachment_create(request: Request, task_id: int, upload_file: UploadFile | None = File(None), file_path: str = Form('')):
+async def board_task_attachment_create(request: Request, task_id: int, upload_file: UploadFile | None = File(None)):
     try:
-        if upload_file and upload_file.filename:
-            create_uploaded_task_attachment(task_id, filename=upload_file.filename, source=upload_file.file, mime_type=upload_file.content_type)
-        else:
-            add_task_attachment(task_id, file_path=file_path, mime_type=None)
+        if not upload_file or not upload_file.filename:
+            raise HTTPException(status_code=400, detail='file upload is required')
+        create_uploaded_task_attachment(task_id, filename=upload_file.filename, source=upload_file.file, mime_type=upload_file.content_type)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     finally:
@@ -192,6 +191,17 @@ def board_task_attachment_remove(request: Request, task_id: int, attachment_id: 
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return templates.TemplateResponse(request, 'partials/task_detail.html', task_detail_context(request, task_id))
+
+
+@app.get('/board/tasks/{task_id}/attachments/{attachment_id}/download')
+def board_task_attachment_download(task_id: int, attachment_id: int):
+    attachment = get_task_attachment(task_id, attachment_id)
+    if not attachment:
+        raise HTTPException(status_code=404, detail='attachment not found')
+    file_path = Path(attachment['file_path'])
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(status_code=404, detail='attachment file missing')
+    return FileResponse(path=file_path, media_type=attachment.get('mime_type') or 'application/octet-stream', filename=attachment.get('download_name') or file_path.name)
 
 
 @app.get('/tasks/{task_id}', response_class=HTMLResponse)

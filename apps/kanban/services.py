@@ -587,6 +587,22 @@ def remove_task_attachment(task_id: int, attachment_id: int) -> None:
         pass
 
 
+def get_task_attachment(task_id: int, attachment_id: int) -> dict[str, Any] | None:
+    with connect() as conn:
+        init_db(conn)
+        row = conn.execute(
+            "SELECT id, entity_type, entity_ref, file_path, mime_type, checksum, created_at FROM attachments WHERE id = ? AND entity_type='task' AND entity_ref = ?",
+            (attachment_id, str(task_id)),
+        ).fetchone()
+    if not row:
+        return None
+    attachment = dict(row)
+    attachment_path = Path(attachment['file_path'])
+    attachment['file_name'] = attachment_path.name or attachment['file_path']
+    attachment['download_name'] = re.sub(r'-[0-9a-f]{8}(\.[^.]+)$', r'\1', attachment['file_name'])
+    return attachment
+
+
 def get_task(task_id: int) -> dict[str, Any] | None:
     with connect() as conn:
         init_db(conn)
@@ -610,4 +626,8 @@ def get_task(task_id: int) -> dict[str, Any] | None:
         task = decorate_task(dict(row))
         task['comments'] = [dict(comment) for comment in conn.execute('SELECT id, comment_type, body, author, created_at FROM task_comments WHERE task_id=? ORDER BY created_at ASC, id ASC', (task_id,)).fetchall()]
         task['attachments'] = [dict(attachment) for attachment in conn.execute("SELECT id, file_path, mime_type, checksum, created_at FROM attachments WHERE entity_type='task' AND entity_ref=? ORDER BY created_at ASC, id ASC", (str(task_id),)).fetchall()]
+        for attachment in task['attachments']:
+            attachment_path = Path(attachment['file_path'])
+            attachment['file_name'] = attachment_path.name or attachment['file_path']
+            attachment['download_name'] = re.sub(r'-[0-9a-f]{8}(\.[^.]+)$', r'\1', attachment['file_name'])
         return task
