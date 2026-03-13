@@ -13,7 +13,7 @@ This repo contains:
 
 Current status: working prototype from PR0083 with optional task + board support.
 
-Kanban app scaffold now lives under `apps/kanban/` with a first `/board` implementation.
+Kanban app scaffold now lives under `apps/kanban/` with a first `/board` implementation plus Phase 2 move/archive interactions.
 
 ## What Work OS manages
 ### Default model

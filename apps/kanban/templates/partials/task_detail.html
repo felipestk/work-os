@@ -9,13 +9,33 @@
   </div>
 
   <dl class="detail-grid">
-    <div><dt>column</dt><dd>{{ task.column_key }}</dd></div>
+    <div><dt>column</dt><dd>{{ task.column_label }}</dd></div>
     <div><dt>status</dt><dd>{{ task.status }}</dd></div>
     <div><dt>priority</dt><dd>{{ task.priority or '—' }}</dd></div>
     <div><dt>assignee</dt><dd>{{ task.assignee or '—' }}</dd></div>
     <div><dt>due</dt><dd>{{ task.due_at or '—' }}</dd></div>
     <div><dt>board</dt><dd>{{ task.board }}</dd></div>
+    <div><dt>comments</dt><dd>{{ task.comment_count }}</dd></div>
+    <div><dt>attachments</dt><dd>{{ task.attachment_count }}</dd></div>
   </dl>
+
+  <div class="detail-actions">
+    {% if task.previous_column %}
+      <form hx-post="/board/tasks/{{ task.id }}/move" hx-target="#board-columns" hx-swap="outerHTML">
+        <input type="hidden" name="column_key" value="{{ task.previous_column }}">
+        <button type="submit" class="secondary-button">Move to {{ columns[task.previous_column] }}</button>
+      </form>
+    {% endif %}
+    {% if task.next_column %}
+      <form hx-post="/board/tasks/{{ task.id }}/move" hx-target="#board-columns" hx-swap="outerHTML">
+        <input type="hidden" name="column_key" value="{{ task.next_column }}">
+        <button type="submit" class="secondary-button">Move to {{ columns[task.next_column] }}</button>
+      </form>
+    {% endif %}
+    <form hx-post="/board/tasks/{{ task.id }}/archive" hx-target="#board-columns" hx-swap="outerHTML">
+      <button type="submit" class="ghost-button">Archive task</button>
+    </form>
+  </div>
 
   <section class="detail-section">
     <h3>Description</h3>

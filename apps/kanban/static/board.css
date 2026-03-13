@@ -129,6 +129,10 @@ button {
 button:hover { background: var(--accent); }
 
 .task-stack { display: grid; gap: 12px; }
+.task-card {
+  padding: 0;
+  overflow: hidden;
+}
 .task-card-link {
   all: unset;
   display: block;
@@ -155,6 +159,32 @@ button:hover { background: var(--accent); }
 .task-preview { color: var(--muted); margin-bottom: 10px; }
 .task-project, .task-customer, .task-meta-row { color: var(--soft); }
 .task-meta-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+.task-actions,
+.detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.task-actions {
+  padding: 0 14px 14px;
+}
+.task-actions form,
+.detail-actions form {
+  flex: 1 1 auto;
+}
+.task-actions button,
+.detail-actions button,
+.detail-close {
+  width: auto;
+}
+.secondary-button {
+  background: white;
+  color: var(--text);
+}
+.ghost-button {
+  background: white;
+  color: var(--accent);
+}
 .empty-state { padding: 12px 2px; }
 
 .detail-panel, .detail-card { min-height: 220px; }

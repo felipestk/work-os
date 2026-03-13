@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections import OrderedDict
-from datetime import datetime, timezone
 from typing import Any
 
 from .db import connect, init_db
@@ -14,6 +13,7 @@ COLUMNS = OrderedDict([
     ('review', 'review'),
     ('done', 'done'),
 ])
+COLUMN_KEYS = list(COLUMNS.keys())
 COLUMN_TO_STATUS = {
     'backlog': 'todo',
     'todo': 'todo',
@@ -21,10 +21,6 @@ COLUMN_TO_STATUS = {
     'review': 'blocked',
     'done': 'done',
 }
-
-
-def now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
 
 
 def normalize_board(board: str | None) -> str:
@@ -36,11 +32,21 @@ def normalize_column(column_key: str | None) -> str:
     return value if value in COLUMNS else 'backlog'
 
 
-def project_exists(project_id: str) -> bool:
-    with connect() as conn:
-        init_db(conn)
-        row = conn.execute('SELECT 1 FROM projects WHERE id = ?', (project_id,)).fetchone()
-        return row is not None
+def previous_column(column_key: str) -> str | None:
+    column_key = normalize_column(column_key)
+    idx = COLUMN_KEYS.index(column_key)
+    return COLUMN_KEYS[idx - 1] if idx > 0 else None
+
+
+def next_column(column_key: str) -> str | None:
+    column_key = normalize_column(column_key)
+    idx = COLUMN_KEYS.index(column_key)
+    return COLUMN_KEYS[idx + 1] if idx < len(COLUMN_KEYS) - 1 else None
+
+
+def project_exists(conn, project_id: str) -> bool:
+    row = conn.execute('SELECT 1 FROM projects WHERE id = ?', (project_id,)).fetchone()
+    return row is not None
 
 
 def list_projects() -> list[dict[str, Any]]:
@@ -94,9 +100,7 @@ def list_board_tasks(board: str = BOARD_NAME) -> dict[str, list[dict[str, Any]]]
             (normalize_board(board),),
         ).fetchall()
     for row in rows:
-        item = dict(row)
-        item['column_key'] = normalize_column(item['column_key'])
-        item['description_preview'] = summarize(item.get('description'))
+        item = decorate_task(dict(row))
         grouped[item['column_key']].append(item)
     return grouped
 
@@ -106,6 +110,16 @@ def summarize(text: str | None, limit: int = 140) -> str:
         return ''
     compact = ' '.join(text.split())
     return compact if len(compact) <= limit else compact[: limit - 1].rstrip() + '…'
+
+
+def decorate_task(task: dict[str, Any]) -> dict[str, Any]:
+    task['board'] = normalize_board(task.get('board'))
+    task['column_key'] = normalize_column(task.get('column_key'))
+    task['description_preview'] = summarize(task.get('description'))
+    task['previous_column'] = previous_column(task['column_key'])
+    task['next_column'] = next_column(task['column_key'])
+    task['column_label'] = COLUMNS[task['column_key']]
+    return task
 
 
 def column_counts(grouped: dict[str, list[dict[str, Any]]]) -> dict[str, int]:
@@ -129,7 +143,7 @@ def next_wip_order(conn, column_key: str, board: str = BOARD_NAME) -> float:
 def create_task(*, title: str, project_id: str, column_key: str, description: str | None = None) -> int:
     with connect() as conn:
         init_db(conn)
-        if not project_exists(project_id):
+        if not project_exists(conn, project_id):
             raise ValueError(f'Unknown project: {project_id}')
         normalized_column = normalize_column(column_key)
         wip_order = next_wip_order(conn, normalized_column)
@@ -157,6 +171,45 @@ def create_task(*, title: str, project_id: str, column_key: str, description: st
         return int(cur.lastrowid)
 
 
+def move_task(task_id: int, destination_column: str) -> None:
+    normalized_column = normalize_column(destination_column)
+    with connect() as conn:
+        init_db(conn)
+        task = conn.execute('SELECT id, column_key, status FROM tasks WHERE id = ?', (task_id,)).fetchone()
+        if not task:
+            raise ValueError(f'Unknown task: {task_id}')
+        if task['status'] == 'archived':
+            raise ValueError('Archived tasks cannot be moved from the board')
+        wip_order = next_wip_order(conn, normalized_column)
+        conn.execute(
+            '''
+            UPDATE tasks
+            SET board=?, column_key=?, wip_order=?, sort_order=?, status=?
+            WHERE id=?
+            ''',
+            (BOARD_NAME, normalized_column, wip_order, int(wip_order), COLUMN_TO_STATUS[normalized_column], task_id),
+        )
+        conn.execute(
+            "INSERT INTO task_comments(task_id, comment_type, body, author) VALUES (?, 'system', ?, 'kanban')",
+            (task_id, f'Task moved to {normalized_column}',),
+        )
+        conn.commit()
+
+
+def archive_task(task_id: int) -> None:
+    with connect() as conn:
+        init_db(conn)
+        task = conn.execute('SELECT id FROM tasks WHERE id = ?', (task_id,)).fetchone()
+        if not task:
+            raise ValueError(f'Unknown task: {task_id}')
+        conn.execute("UPDATE tasks SET status='archived' WHERE id=?", (task_id,))
+        conn.execute(
+            "INSERT INTO task_comments(task_id, comment_type, body, author) VALUES (?, 'system', 'Task archived from board', 'kanban')",
+            (task_id,),
+        )
+        conn.commit()
+
+
 def get_task(task_id: int) -> dict[str, Any] | None:
     with connect() as conn:
         init_db(conn)
@@ -165,19 +218,22 @@ def get_task(task_id: int) -> dict[str, Any] | None:
             SELECT
               t.*,
               p.title AS project_title,
-              c.name AS customer_name
+              c.name AS customer_name,
+              COUNT(DISTINCT tc.id) AS comment_count,
+              COUNT(DISTINCT a.id) AS attachment_count
             FROM tasks t
             JOIN projects p ON p.id = t.project_id
             JOIN customers c ON c.id = p.customer_id
+            LEFT JOIN task_comments tc ON tc.task_id = t.id
+            LEFT JOIN attachments a ON a.entity_type = 'task' AND a.entity_ref = CAST(t.id AS TEXT)
             WHERE t.id = ?
+            GROUP BY t.id, p.title, c.name
             ''',
             (task_id,),
         ).fetchone()
         if not row:
             return None
-        task = dict(row)
-        task['board'] = normalize_board(task.get('board'))
-        task['column_key'] = normalize_column(task.get('column_key'))
+        task = decorate_task(dict(row))
         task['comments'] = [
             dict(comment)
             for comment in conn.execute(
