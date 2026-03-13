@@ -13,19 +13,19 @@
     <form class="filters-form" hx-get="/board" hx-target="#board-shell" hx-swap="outerHTML">
       <label>
         <span>Search</span>
-        <input type="text" name="q" value="{{ filters.q }}" placeholder="Title, project, customer">
+        <input type="text" name="q" value="{{ filters.q if filters is defined else '' }}" placeholder="Title, project, customer">
       </label>
       <label>
         <span>Project</span>
-        <input type="text" name="project_id" value="{{ filters.project_id }}" list="project-options" placeholder="PR0001">
+        <input type="text" name="project_id" value="{{ filters.project_id if filters is defined else '' }}" list="project-options" placeholder="PR0001">
       </label>
       <label>
         <span>Assignee</span>
-        <input type="text" name="assignee" value="{{ filters.assignee }}" list="assignee-options" placeholder="Name">
+        <input type="text" name="assignee" value="{{ filters.assignee if filters is defined else '' }}" list="assignee-options" placeholder="Name">
       </label>
       <label>
         <span>Customer</span>
-        <input type="text" name="customer_name" value="{{ filters.customer_name }}" list="customer-options" placeholder="Customer name">
+        <input type="text" name="customer_name" value="{{ filters.customer_name if filters is defined else '' }}" list="customer-options" placeholder="Customer name">
       </label>
       <div class="filters-actions">
         <button type="submit" class="secondary-button">Apply filters</button>
