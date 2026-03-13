@@ -1,14 +1,13 @@
 {% set current_id = value or '' %}
 {% set current_label = current_label or current_id %}
-<div class="picker-field" data-project-picker data-origin="{{ origin }}" data-target="{{ target }}">
+<div class="picker-field" data-project-picker data-origin="{{ origin|default('') }}" data-target="{{ target }}">
   <input type="hidden" name="{{ target }}" value="{{ current_id }}" data-project-picker-hidden>
-  <span>Project</span>
+  <span>{{ label or 'Project' }}</span>
   <input type="text"
          value="{{ current_label }}"
-         placeholder="Search project"
+         placeholder="{{ placeholder or 'Search project' }}"
          autocomplete="off"
          data-project-picker-input
-         data-search-url="/board/projects/search"
-         name="q">
+         data-search-url="{{ search_url or '/board/projects/search' }}">
   <div class="picker-results" data-project-picker-results></div>
 </div>

@@ -4,7 +4,7 @@
     <div class="header-copy">
       <div>
         <h1>Operations Board</h1>
-        <p class="subtitle">A global board for all non-archived work across projects, with tasks anchored to project and customer context.</p>
+        <p class="subtitle">A global board for all non-archived tasks across projects, with tasks anchored to project and customer context.</p>
       </div>
     </div>
   </header>
@@ -13,20 +13,17 @@
     <form class="filters-form" hx-get="/board" hx-target="#board-shell" hx-swap="outerHTML">
       <label>
         <span>Search</span>
-        <input type="text" name="q" value="{{ filters.q if filters is defined else '' }}" placeholder="Title, project, customer">
+        <input type="text" name="q" value="{{ filters.q if filters is defined else '' }}" placeholder="Title, description, project, customer">
       </label>
-      <label>
-        <span>Project</span>
-        <input type="text" name="project_id" value="{{ filters.project_id if filters is defined else '' }}" list="project-options" placeholder="PR0001">
-      </label>
-      <label>
-        <span>Assignee</span>
-        <input type="text" name="assignee" value="{{ filters.assignee if filters is defined else '' }}" list="assignee-options" placeholder="Name">
-      </label>
-      <label>
-        <span>Customer</span>
-        <input type="text" name="customer_name" value="{{ filters.customer_name if filters is defined else '' }}" list="customer-options" placeholder="Customer name">
-      </label>
+
+      {% with origin='', target='project_id', value=(filters.project_id if filters is defined else ''), current_label=(filters.project_label if filters is defined else (filters.project_id if filters is defined else '')), label='Project', placeholder='Filter by project', search_url='/board/projects/filter-search' %}
+        {% include 'partials/project_picker_field.html' %}
+      {% endwith %}
+
+      {% with target='customer_name', value=(filters.customer_name if filters is defined else ''), label='Customer', placeholder='Filter by customer', search_url='/board/customers/filter-search' %}
+        {% include 'partials/customer_picker_field.html' %}
+      {% endwith %}
+
       <div class="filters-actions">
         <button type="submit" class="secondary-button">Apply filters</button>
         <button type="button" class="ghost-button" data-reset-filters>Reset</button>
@@ -37,15 +34,4 @@
   <section id="board-columns" class="board-columns">
     {% include 'partials/board_columns.html' %}
   </section>
-
-  <datalist id="assignee-options">
-    {% for assignee in assignee_options %}
-      <option value="{{ assignee }}">
-    {% endfor %}
-  </datalist>
-  <datalist id="customer-options">
-    {% for customer in customer_options %}
-      <option value="{{ customer }}">
-    {% endfor %}
-  </datalist>
 </section>

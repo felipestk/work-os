@@ -16,7 +16,6 @@ from .services import (
     create_task,
     get_task,
     list_board_tasks,
-    list_filter_options,
     list_projects,
     move_task,
     search_customers,
@@ -25,15 +24,25 @@ from .services import (
 )
 
 BASE_DIR = Path(__file__).resolve().parent
-app = FastAPI(title='openclaw-workos kanban', version='0.5.0')
+app = FastAPI(title='openclaw-workos kanban', version='0.6.0')
 app.mount('/static', StaticFiles(directory=str(BASE_DIR / 'static')), name='static')
 templates = Jinja2Templates(directory=str(BASE_DIR / 'templates'))
+
+
+def project_label_for(project_id: str) -> str:
+    project_id = (project_id or '').strip()
+    if not project_id:
+        return ''
+    for project in search_projects(project_id, limit=1):
+        if project['id'] == project_id:
+            return f"{project['id']} — {project['title']} · {project['customer_name']}"
+    return project_id
 
 
 def board_context(request: Request, filters: dict[str, str] | None = None):
     active_filters = build_filters(**(filters or {}))
     grouped = list_board_tasks(filters=active_filters)
-    filter_options = list_filter_options()
+    active_filters['project_label'] = project_label_for(active_filters['project_id'])
     return {
         'request': request,
         'board_name': BOARD_NAME,
@@ -42,8 +51,6 @@ def board_context(request: Request, filters: dict[str, str] | None = None):
         'counts': column_counts(grouped),
         'projects': list_projects(),
         'filters': active_filters,
-        'assignee_options': filter_options['assignees'],
-        'customer_options': filter_options['customers'],
     }
 
 
@@ -71,64 +78,46 @@ def root() -> RedirectResponse:
 
 
 @app.get('/board', response_class=HTMLResponse)
-def board(request: Request, project_id: str = '', assignee: str = '', customer_name: str = '', q: str = ''):
-    return render_board_response(request, build_filters(project_id, assignee, customer_name, q))
+def board(request: Request, project_id: str = '', customer_name: str = '', q: str = ''):
+    return render_board_response(request, build_filters(project_id=project_id, customer_name=customer_name, q=q))
 
 
 @app.get('/board/projects/search', response_class=HTMLResponse)
 def board_projects_search(request: Request, q: str = Query('')):
-    return templates.TemplateResponse(
-        request,
-        'partials/project_picker_results.html',
-        {'request': request, 'projects': search_projects(q), 'query': (q or '').strip()},
-    )
+    return templates.TemplateResponse(request, 'partials/project_picker_results.html', {'request': request, 'projects': search_projects(q), 'query': (q or '').strip()})
+
+
+@app.get('/board/projects/filter-search', response_class=HTMLResponse)
+def board_projects_filter_search(request: Request, q: str = Query('')):
+    return templates.TemplateResponse(request, 'partials/project_filter_results.html', {'request': request, 'projects': search_projects(q), 'query': (q or '').strip()})
 
 
 @app.get('/board/customers/search', response_class=HTMLResponse)
 def board_customers_search(request: Request, q: str = Query('')):
-    return templates.TemplateResponse(
-        request,
-        'partials/customer_picker_results.html',
-        {'request': request, 'customers': search_customers(q), 'query': (q or '').strip()},
-    )
+    return templates.TemplateResponse(request, 'partials/customer_picker_results.html', {'request': request, 'customers': search_customers(q), 'query': (q or '').strip()})
+
+
+@app.get('/board/customers/filter-search', response_class=HTMLResponse)
+def board_customers_filter_search(request: Request, q: str = Query('')):
+    return templates.TemplateResponse(request, 'partials/customer_filter_results.html', {'request': request, 'customers': search_customers(q), 'query': (q or '').strip()})
 
 
 @app.get('/board/project-create', response_class=HTMLResponse)
 def board_project_create_modal(request: Request, origin: str = Query('quick-add'), target: str = Query('project_id')):
-    return templates.TemplateResponse(
-        request,
-        'partials/project_create_modal.html',
-        {'request': request, 'origin': origin, 'target': target, 'customers': search_customers('')},
-    )
+    return templates.TemplateResponse(request, 'partials/project_create_modal.html', {'request': request, 'origin': origin, 'target': target, 'customers': search_customers('')})
 
 
 @app.post('/board/project-create', response_class=HTMLResponse)
-def board_project_create_submit(
-    request: Request,
-    customer_name: str = Form(...),
-    project_title: str = Form(...),
-    origin: str = Form('quick-add'),
-    target: str = Form('project_id'),
-):
+def board_project_create_submit(request: Request, customer_name: str = Form(...), project_title: str = Form(...), origin: str = Form('quick-add'), target: str = Form('project_id')):
     try:
         project = create_customer_and_project(customer_name=customer_name, project_title=project_title, owner='kanban')
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return templates.TemplateResponse(
-        request,
-        'partials/project_picker_selected.html',
-        {'request': request, 'project': project, 'origin': origin, 'target': target},
-    )
+    return templates.TemplateResponse(request, 'partials/project_picker_selected.html', {'request': request, 'project': project, 'origin': origin, 'target': target})
 
 
 @app.post('/board/tasks', response_class=HTMLResponse)
-def board_task_create(
-    request: Request,
-    title: str = Form(...),
-    project_id: str = Form(''),
-    description: str = Form(''),
-    column_key: str = Form('backlog'),
-):
+def board_task_create(request: Request, title: str = Form(...), project_id: str = Form(''), description: str = Form(''), column_key: str = Form('backlog')):
     if not title.strip():
         raise HTTPException(status_code=400, detail='title is required')
     try:
@@ -157,28 +146,11 @@ def board_task_archive(request: Request, task_id: int):
 
 
 @app.post('/board/tasks/{task_id}/update', response_class=HTMLResponse)
-def board_task_update(
-    request: Request,
-    task_id: int,
-    title: str = Form(...),
-    description: str = Form(''),
-    project_id: str = Form(''),
-    priority: str = Form(''),
-    assignee: str = Form(''),
-    due_at: str = Form(''),
-):
+def board_task_update(request: Request, task_id: int, title: str = Form(...), description: str = Form(''), project_id: str = Form(''), priority: str = Form(''), assignee: str = Form(''), due_at: str = Form('')):
     if not title.strip():
         raise HTTPException(status_code=400, detail='title is required')
     try:
-        update_task(
-            task_id,
-            title=title,
-            description=description,
-            project_id=project_id.strip(),
-            priority=priority,
-            assignee=assignee,
-            due_at=due_at,
-        )
+        update_task(task_id, title=title, description=description, project_id=project_id.strip(), priority=priority, assignee=assignee, due_at=due_at)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return templates.TemplateResponse(request, 'partials/task_detail.html', task_detail_context(request, task_id))

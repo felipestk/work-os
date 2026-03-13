@@ -1,0 +1,10 @@
+<div class="picker-results-card">
+  {% for project in projects %}
+    <button type="button" class="picker-option" data-project-select data-project-id="{{ project.id }}" data-project-label="{{ project.id }} — {{ project.title }} · {{ project.customer_name }}">
+      <strong>{{ project.id }}</strong>
+      <span>{{ project.title }} · {{ project.customer_name }}</span>
+    </button>
+  {% else %}
+    <div class="picker-empty">No matching projects.</div>
+  {% endfor %}
+</div>

@@ -1,0 +1,12 @@
+{% set current_value = value or '' %}
+<div class="picker-field" data-customer-picker data-target="{{ target }}">
+  <input type="hidden" name="{{ target }}" value="{{ current_value }}" data-customer-picker-hidden>
+  <span>{{ label or 'Customer' }}</span>
+  <input type="text"
+         value="{{ current_value }}"
+         placeholder="{{ placeholder or 'Search customer' }}"
+         autocomplete="off"
+         data-customer-picker-input
+         data-search-url="{{ search_url or '/board/customers/search' }}">
+  <div class="picker-results" data-customer-picker-results></div>
+</div>

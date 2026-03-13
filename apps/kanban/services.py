@@ -192,12 +192,12 @@ def list_filter_options() -> dict[str, list[str]]:
     return {'assignees': assignees, 'customers': customers}
 
 
-def build_filters(project_id: str = '', assignee: str = '', customer_name: str = '', q: str = '') -> dict[str, str]:
+def build_filters(project_id: str = '', customer_name: str = '', q: str = '', assignee: str = '') -> dict[str, str]:
     return {
         'project_id': (project_id or '').strip(),
-        'assignee': (assignee or '').strip(),
         'customer_name': (customer_name or '').strip(),
         'q': (q or '').strip(),
+        'assignee': (assignee or '').strip(),
     }
 
 

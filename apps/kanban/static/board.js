@@ -115,8 +115,8 @@ function runProjectSearch(input) {
 }
 
 function runCustomerSearch(input) {
-  const form = input.closest('form');
-  const results = form?.querySelector('[data-customer-picker-results]');
+  const container = input.closest('[data-customer-picker]') || input.closest('form');
+  const results = container?.querySelector('[data-customer-picker-results]');
   const searchUrl = input.dataset.searchUrl;
   if (!results || !searchUrl) return;
   const q = input.value || '';
@@ -136,19 +136,23 @@ function applyProjectSelection(button) {
 }
 
 function applyCustomerSelection(button) {
-  const form = button.closest('form');
-  if (!form) return;
-  const input = form.querySelector('input[name="customer_name"]');
-  const results = form.querySelector('[data-customer-picker-results]');
+  const container = button.closest('[data-customer-picker]') || button.closest('form');
+  if (!container) return;
+  const hidden = container.querySelector('[data-customer-picker-hidden]');
+  const input = container.querySelector('[data-customer-picker-input], input[name="customer_name"]');
+  const results = container.querySelector('[data-customer-picker-results]');
+  if (hidden) hidden.value = button.dataset.customerName || '';
   if (input) input.value = button.dataset.customerName || '';
   clearResults(results);
 }
 
 function applyCustomerQuery(button) {
-  const form = button.closest('form');
-  if (!form) return;
-  const input = form.querySelector('input[name="customer_name"]');
-  const results = form.querySelector('[data-customer-picker-results]');
+  const container = button.closest('[data-customer-picker]') || button.closest('form');
+  if (!container) return;
+  const hidden = container.querySelector('[data-customer-picker-hidden]');
+  const input = container.querySelector('[data-customer-picker-input], input[name="customer_name"]');
+  const results = container.querySelector('[data-customer-picker-results]');
+  if (hidden) hidden.value = button.dataset.customerQuery || '';
   if (input) input.value = button.dataset.customerQuery || '';
   clearResults(results);
 }
