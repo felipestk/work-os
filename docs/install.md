@@ -65,6 +65,17 @@ bin/workctl doctor
 tests/smoke.sh
 ```
 
+## Kanban deployment note
+If the kanban app is included on the target host, document and deploy it under:
+- `apps/workos-kanban/`
+
+Recommended serving model:
+- run the app locally with Uvicorn on an internal port (for example `127.0.0.1:8010`)
+- place `nginx` in front of it as the reverse proxy
+- expose the public/internal URL through nginx rather than binding Uvicorn directly to the network edge
+
+This keeps the app deployment shape predictable across hosts and gives operators a standard place to add TLS, auth, headers, and request limits.
+
 ## Notes
 - Runtime DBs are not tracked in git.
 - Demo data can be loaded with `scripts/bootstrap.sh`.

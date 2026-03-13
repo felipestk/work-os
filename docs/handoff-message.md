@@ -45,6 +45,18 @@ That part matters because:
 - install makes the toolkit and skill available
 - AGENTS/TOOLS integration makes the host actually prefer and enforce the workflow
 
+## Kanban deployment expectation
+If the kanban app is being deployed on the target host, please standardize on:
+- app location: `apps/workos-kanban/`
+- serving model: `nginx` as a reverse proxy in front of the app
+
+Recommended shape:
+- run the app on a local/internal port (for example `127.0.0.1:8010`)
+- terminate/expose through `nginx`
+- keep direct public exposure off the Uvicorn process
+
+This gives us one predictable place for routing, TLS, auth, and operational hardening.
+
 ## Behavioral note
 Tasks are supported, but they are intentionally optional.
 The default Work OS model should still center on:

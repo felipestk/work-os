@@ -19,8 +19,12 @@ It is intentionally:
 - SQLite through the shared Work OS schema
 
 ## App location
-- app code: `apps/kanban/`
-- entrypoint: `apps.kanban.main:app`
+The canonical repo location for the kanban app should be:
+- app code: `apps/workos-kanban/`
+- Python package / entrypoint: `apps.kanban.main:app`
+
+Implementation note:
+- the import path can remain `apps.kanban.main:app` even if the product-facing repo folder is referred to as `apps/workos-kanban/`, but the deployment/docs convention should consistently point operators to `apps/workos-kanban/` as the app location.
 
 ## Current feature set
 ### Board

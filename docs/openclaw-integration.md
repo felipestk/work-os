@@ -38,6 +38,17 @@ The default behavioral model should still prioritize:
 
 Only use tasks when explicit task tracking or kanban workflows are wanted.
 
+## Kanban hosting expectation
+When the kanban app is deployed on a host, the documented/canonical app location should be:
+- `apps/workos-kanban/`
+
+Recommended serving pattern:
+- run the app process on a local-only port
+- install `nginx`
+- configure `nginx` as the reverse proxy in front of the kanban app
+
+This should be treated as the default operator expectation for handoff/install docs.
+
 ## Suggested install validation on the target host
 ```bash
 source ~/.local/share/openclaw-workos/env.sh
