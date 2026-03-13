@@ -7,6 +7,7 @@
 - `workctl project ...`
 - `workctl offer ...`
 - `workctl activity ...`
+- `workctl attach ...`
 - `workctl task ...`
 - `workctl search`
 
@@ -17,6 +18,7 @@
 - `project create|list|show|event|status`
 - `offer create|list|show|versions|status|revise|item add|list|update|remove|totals recalc`
 - `activity add|list`
+- `attach add|list`
 - `task create|list|show|status|comment add`
 
 ## Task command policy
@@ -30,11 +32,30 @@ Default agent usage should still prefer:
 
 Use task commands only when the user explicitly wants task tracking or when operating inside a board/kanban workflow.
 
+## Attachment examples
+```bash
+workctl attach add --entity-type task --entity-ref 1 --file ./spec.md --mime-type text/markdown
+workctl attach list --entity-type task --entity-ref 1 --table
+
+workctl attach add --entity-type project --entity-ref PR0002 --file ./brief.pdf
+workctl attach list --entity-type project --entity-ref PR0002 --table
+
+workctl attach add --entity-type offer --entity-ref QDEMO001 --file ./quote.pdf
+workctl attach list --entity-type offer --entity-ref QDEMO001 --table
+```
+
 ## Task examples
 ```bash
-workctl task create --project PR0002 --title "Prepare kanban model" --description "Draft optional task entity plan"
+workctl task create \
+  --project PR0002 \
+  --title "Prepare kanban model" \
+  --description "Draft optional task entity plan" \
+  --board delivery \
+  --column-key todo \
+  --wip-order 10
+
 workctl task list --project PR0002 --table
 workctl task show --task 1
-workctl task status --task 1 --status in_progress --note "Started schema pass"
+workctl task status --task 1 --status in_progress --board delivery --column-key doing --wip-order 20 --note "Started schema pass"
 workctl task comment add --task 1 --body "Need board column mapping later"
 ```

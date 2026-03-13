@@ -13,6 +13,7 @@ This repo contains:
 Current status: working early prototype based on PR0083 planning.
 
 ## What Work OS manages
+### Default model
 - customers
 - contacts
 - projects (`PRxxxx`)
@@ -21,9 +22,12 @@ Current status: working early prototype based on PR0083 planning.
 - offer versions
 - offer line items
 - activities
-- optional tasks
+
+### Optional extension layer
+- tasks
 - task comments
 - shared attachments
+- minimal kanban fields on tasks (`board`, `column_key`, `wip_order`)
 
 ## Goal
 This repo is meant to be sent to another OpenClaw host, installed there, and provide:
@@ -57,7 +61,10 @@ The default Work OS workflow is still:
 - offer
 - activity
 
-Use tasks only when explicit task tracking or future board/kanban workflows are needed.
+Use tasks only when explicit task tracking or board/kanban workflows are needed.
+
+## Attachment policy
+Use the shared attachment model to connect files to tasks, projects, offers, and other supported entities.
 
 ## Repo-local demo/testing
 ```bash

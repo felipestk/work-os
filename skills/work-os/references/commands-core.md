@@ -27,9 +27,10 @@ workctl offer totals recalc --offer QDEMO001
 workctl activity add --customer "Northwind Systems" --project PR0002 --type meeting --direction outbound --body "Kickoff summary"
 workctl activity list --project PR0002 --table
 
-# Optional: only when explicit task tracking is needed
-workctl task create --project PR0002 --title "Prepare board model"
+# Optional extension: only when explicit task tracking is needed
+workctl task create --project PR0002 --title "Prepare board model" --board delivery --column-key todo --wip-order 10
 workctl task list --project PR0002 --table
+workctl attach add --entity-type task --entity-ref 1 --file ./spec.md
 
 workctl search --keyword northwind --table
 ```

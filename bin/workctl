@@ -159,6 +159,40 @@ def require_task(conn, task_id):
     return row
 
 
+def ensure_attachment_entity(conn, entity_type, entity_ref):
+    if entity_type == 'task':
+        require_task(conn, int(entity_ref))
+        return
+    if entity_type == 'project':
+        require_project(conn, entity_ref)
+        return
+    if entity_type == 'offer':
+        require_offer(conn, entity_ref)
+        return
+    if entity_type == 'customer':
+        require_customer(conn, entity_ref)
+        return
+    if entity_type == 'contact':
+        row = conn.execute('SELECT id FROM contacts WHERE id=?', (int(entity_ref),)).fetchone()
+        if not row:
+            raise ValueError(f"Unknown contact: {entity_ref}")
+        return
+    if entity_type == 'activity':
+        row = conn.execute('SELECT id FROM activities WHERE id=?', (int(entity_ref),)).fetchone()
+        if not row:
+            raise ValueError(f"Unknown activity: {entity_ref}")
+        return
+    raise ValueError(f"Unsupported entity_type: {entity_type}")
+
+
+def file_checksum(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open('rb') as f:
+        for chunk in iter(lambda: f.read(65536), b''):
+            h.update(chunk)
+    return h.hexdigest()
+
+
 def cmd_init(_args):
     with connect() as conn:
         init_db(conn)
@@ -640,10 +674,10 @@ def cmd_task_create(args):
             require_task(conn, args.parent_task_id)
         cur = conn.execute(
             """
-            INSERT INTO tasks(project_id, parent_task_id, title, description, status, priority, sort_order, due_at, started_at, completed_at, assignee)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO tasks(project_id, parent_task_id, title, description, status, priority, board, column_key, wip_order, sort_order, due_at, started_at, completed_at, assignee)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (args.project, args.parent_task_id, args.title, args.description, args.status, args.priority, args.sort_order, args.due_at, args.started_at, args.completed_at, args.assignee),
+            (args.project, args.parent_task_id, args.title, args.description, args.status, args.priority, args.board, args.column_key, args.wip_order, args.sort_order, args.due_at, args.started_at, args.completed_at, args.assignee),
         )
         task_id = cur.lastrowid
         if args.note:
@@ -659,7 +693,7 @@ def cmd_task_list(args):
     with connect() as conn:
         init_db(conn)
         q = """
-        SELECT t.id, t.project_id, t.parent_task_id, t.title, t.status, t.priority, t.assignee, t.due_at, t.updated_at
+        SELECT t.id, t.project_id, t.parent_task_id, t.title, t.status, t.priority, t.board, t.column_key, t.wip_order, t.assignee, t.due_at, t.updated_at
         FROM tasks t
         """
         where = []
@@ -673,7 +707,7 @@ def cmd_task_list(args):
             params.append(args.status)
         if where:
             q += ' WHERE ' + ' AND '.join(where)
-        q += ' ORDER BY t.project_id, COALESCE(t.sort_order, 0), t.id LIMIT ?'
+        q += " ORDER BY t.project_id, COALESCE(t.board, ''), COALESCE(t.column_key, ''), COALESCE(t.wip_order, t.sort_order), t.id LIMIT ?"
         params.append(args.limit)
         rows = [dict(r) for r in conn.execute(q, params)]
     print_rows(rows, table=args.table)
@@ -687,7 +721,12 @@ def cmd_task_show(args):
             'SELECT id, comment_type, body, author, created_at, updated_at FROM task_comments WHERE task_id=? ORDER BY created_at ASC, id ASC',
             (args.task,),
         )]
+        attachments = [dict(r) for r in conn.execute(
+            "SELECT id, file_path, mime_type, checksum, created_at FROM attachments WHERE entity_type='task' AND entity_ref=? ORDER BY created_at ASC, id ASC",
+            (str(args.task),),
+        )]
         task['comments'] = comments
+        task['attachments'] = attachments
     print(json.dumps(task, indent=2, ensure_ascii=False))
 
 
@@ -705,7 +744,10 @@ def cmd_task_status(args):
                 started_at = completed_at
         elif args.status != 'done' and args.completed_at is not None:
             completed_at = args.completed_at
-        conn.execute('UPDATE tasks SET status=?, started_at=?, completed_at=? WHERE id=?', (args.status, started_at, completed_at, args.task))
+        board = args.board if args.board is not None else task['board']
+        column_key = args.column_key if args.column_key is not None else task['column_key']
+        wip_order = args.wip_order if args.wip_order is not None else task['wip_order']
+        conn.execute('UPDATE tasks SET status=?, started_at=?, completed_at=?, board=?, column_key=?, wip_order=? WHERE id=?', (args.status, started_at, completed_at, board, column_key, wip_order, args.task))
         if args.note:
             conn.execute(
                 "INSERT INTO task_comments(task_id, comment_type, body, author) VALUES (?, 'system', ?, ?)",
@@ -726,6 +768,33 @@ def cmd_task_comment_add(args):
         conn.commit()
     print(json.dumps({'id': cur.lastrowid, 'task_id': args.task, 'comment_type': args.comment_type}))
 
+def cmd_attach_add(args):
+    with connect() as conn:
+        init_db(conn)
+        ensure_attachment_entity(conn, args.entity_type, args.entity_ref)
+        file_path = Path(args.file).expanduser().resolve()
+        if not file_path.exists() or not file_path.is_file():
+            raise ValueError(f"File not found: {file_path}")
+        checksum = file_checksum(file_path)
+        cur = conn.execute(
+            'INSERT INTO attachments(entity_type, entity_ref, file_path, mime_type, checksum) VALUES (?, ?, ?, ?, ?)',
+            (args.entity_type, str(args.entity_ref), str(file_path), args.mime_type, checksum),
+        )
+        conn.commit()
+    print(json.dumps({'id': cur.lastrowid, 'entity_type': args.entity_type, 'entity_ref': str(args.entity_ref), 'file_path': str(file_path), 'checksum': checksum}))
+
+
+def cmd_attach_list(args):
+    with connect() as conn:
+        init_db(conn)
+        ensure_attachment_entity(conn, args.entity_type, args.entity_ref)
+        rows = [dict(r) for r in conn.execute(
+            'SELECT id, entity_type, entity_ref, file_path, mime_type, checksum, created_at FROM attachments WHERE entity_type=? AND entity_ref=? ORDER BY created_at DESC, id DESC',
+            (args.entity_type, str(args.entity_ref)),
+        )]
+    print_rows(rows, table=args.table)
+
+
 def cmd_search(args):
     with connect() as conn:
         init_db(conn)
@@ -738,6 +807,8 @@ def cmd_search(args):
         for r in conn.execute('SELECT offer_code AS ref, title AS label, "offer" AS entity, updated_at AS at FROM offers WHERE title LIKE ? OR summary LIKE ? OR assumptions LIKE ? LIMIT 20', (like, like, like)):
             rows.append(dict(r))
         for r in conn.execute('SELECT a.id AS ref, COALESCE(a.subject, substr(a.body,1,80)) AS label, "activity" AS entity, a.happened_at AS at FROM activities a WHERE a.subject LIKE ? OR a.body LIKE ? LIMIT 20', (like, like)):
+            rows.append(dict(r))
+        for r in conn.execute('SELECT t.id AS ref, t.title AS label, "task" AS entity, t.updated_at AS at FROM tasks t WHERE t.title LIKE ? OR t.description LIKE ? OR t.board LIKE ? OR t.column_key LIKE ? LIMIT 20', (like, like, like, like)):
             rows.append(dict(r))
     rows.sort(key=lambda x: (x.get('at') or ''), reverse=True)
     print_rows(rows[:args.limit], table=args.table)
@@ -865,6 +936,21 @@ def build_parser():
     sp.set_defaults(func=cmd_activity_list)
 
 
+    attach = sub.add_parser('attach')
+    atsub = attach.add_subparsers(dest='sub', required=True)
+    sp = atsub.add_parser('add')
+    sp.add_argument('--entity-type', required=True, choices=['activity', 'offer', 'customer', 'contact', 'project', 'task'])
+    sp.add_argument('--entity-ref', required=True)
+    sp.add_argument('--file', required=True)
+    sp.add_argument('--mime-type')
+    sp.set_defaults(func=cmd_attach_add)
+
+    sp = atsub.add_parser('list')
+    sp.add_argument('--entity-type', required=True, choices=['activity', 'offer', 'customer', 'contact', 'project', 'task'])
+    sp.add_argument('--entity-ref', required=True)
+    sp.add_argument('--table', action='store_true')
+    sp.set_defaults(func=cmd_attach_list)
+
     task = sub.add_parser('task')
     tsub = task.add_subparsers(dest='sub', required=True)
 
@@ -875,6 +961,9 @@ def build_parser():
     sp.add_argument('--description')
     sp.add_argument('--status', default='todo', choices=['todo', 'in_progress', 'blocked', 'done', 'cancelled', 'archived'])
     sp.add_argument('--priority', choices=['low', 'medium', 'high', 'urgent'])
+    sp.add_argument('--board')
+    sp.add_argument('--column-key')
+    sp.add_argument('--wip-order', type=float)
     sp.add_argument('--sort-order', type=int, default=0)
     sp.add_argument('--due-at')
     sp.add_argument('--started-at')
@@ -898,6 +987,9 @@ def build_parser():
     sp.add_argument('--task', type=int, required=True)
     sp.add_argument('--status', required=True, choices=['todo', 'in_progress', 'blocked', 'done', 'cancelled', 'archived'])
     sp.add_argument('--completed-at')
+    sp.add_argument('--board')
+    sp.add_argument('--column-key')
+    sp.add_argument('--wip-order', type=float)
     sp.add_argument('--note')
     sp.set_defaults(func=cmd_task_status)
 

@@ -133,6 +133,9 @@ CREATE TABLE IF NOT EXISTS tasks (
   description TEXT,
   status TEXT NOT NULL DEFAULT 'todo' CHECK (status IN ('todo','in_progress','blocked','done','cancelled','archived')),
   priority TEXT CHECK (priority IN ('low','medium','high','urgent')),
+  board TEXT,
+  column_key TEXT,
+  wip_order REAL,
   sort_order INTEGER NOT NULL DEFAULT 0,
   due_at TEXT,
   started_at TEXT,
@@ -186,6 +189,7 @@ CREATE INDEX IF NOT EXISTS idx_activities_project_happened ON activities(project
 CREATE INDEX IF NOT EXISTS idx_activities_offer_happened ON activities(offer_id, happened_at DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_activities_dedup_hash ON activities(dedup_hash) WHERE dedup_hash IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_tasks_project_status_sort ON tasks(project_id, status, sort_order, id);
+CREATE INDEX IF NOT EXISTS idx_tasks_board_column_order ON tasks(project_id, board, column_key, wip_order, id);
 CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_task_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_due_at ON tasks(due_at);
 CREATE INDEX IF NOT EXISTS idx_task_comments_task_created ON task_comments(task_id, created_at DESC);
@@ -233,4 +237,11 @@ CREATE TRIGGER IF NOT EXISTS trg_offer_line_items_updated_at AFTER UPDATE ON off
 END;
 CREATE TRIGGER IF NOT EXISTS trg_activities_updated_at AFTER UPDATE ON activities BEGIN
   UPDATE activities SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = NEW.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_tasks_updated_at AFTER UPDATE ON tasks BEGIN
+  UPDATE tasks SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = NEW.id;
+END;
+CREATE TRIGGER IF NOT EXISTS trg_task_comments_updated_at AFTER UPDATE ON task_comments BEGIN
+  UPDATE task_comments SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = NEW.id;
 END;

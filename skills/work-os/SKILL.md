@@ -52,7 +52,7 @@ Use activities for notable communication and decisions:
 Do not log every trivial step. Log the moments that matter for continuity.
 
 ## Task rule
-Tasks are **super optional**.
+Tasks are **super optional** and should be treated like an optional extension layer, not part of the default Work OS flow.
 Do not create or update tasks by default.
 
 Prefer projects, project events, and activities for normal execution logging.
@@ -65,6 +65,11 @@ When tasks are used:
 - link every task to a project
 - infer customer context through the project
 - keep task comments inside the task comment thread, not in activities, unless the comment also matters as a broader project/customer event
+- use board fields only when there is an explicit board workflow
+
+## Attachment rule
+Use the shared attachment model when files need to be linked to tasks, projects, offers, or other supported entities.
+Prefer attachments over burying file paths inside long notes.
 
 ## Context discipline
 Keep the default command usage small.

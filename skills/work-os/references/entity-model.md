@@ -17,6 +17,7 @@ Broader timeline record for notes, calls, emails, meetings, decisions, and summa
 
 ## Task
 Optional project-linked work item for explicit task tracking or kanban workflows.
+Treat this as an optional extension layer rather than a default operating primitive.
 
 Rules:
 - every task belongs to a project
@@ -24,3 +25,4 @@ Rules:
 - tasks are not part of the default workflow
 - tasks have their own comments thread
 - task attachments use the shared `attachments` model with `entity_type='task'`
+- minimal kanban support is available via `board`, `column_key`, and `wip_order`
