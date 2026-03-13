@@ -21,6 +21,29 @@ This initializes a clean repo-local database, loads generic demo data, and valid
 - archive/unarchive lifecycle
 - search
 
+## Kanban regression test
+Run:
+
+```bash
+source .venv/bin/activate
+python tests/kanban_regression.py
+```
+
+This validates the current kanban app flow more directly, including:
+- board page load
+- task drawer load
+- filter endpoints
+- project/customer picker search endpoints
+- project-create modal flow
+- comment creation
+- inline validation failure for blank comments
+- attachment upload
+- attachment download
+- attachment removal
+- task move
+- task update
+- task archive
+
 ## Demo bootstrap
 To create a local demo/testing DB only:
 

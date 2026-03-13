@@ -11,9 +11,18 @@ This repo contains:
 - skill packaging helper
 - install/integration/handoff docs
 
-Current status: working prototype from PR0083 with optional task + board support.
+Current status: working internal v1 from PR0083 with optional task + board support.
 
-Kanban app scaffold now lives under `apps/kanban/` with a first `/board` implementation plus Phase 2 move/archive interactions.
+Kanban app lives under `apps/kanban/` and currently includes:
+- global `/board` view across all non-archived tasks
+- fixed backlog / to do / doing / review / done columns
+- backlog quick add
+- drawer-based task detail/edit flow
+- comment creation from drawer
+- attachment upload / download / remove from drawer
+- project + customer picker flows
+- archive and left/right move interactions
+- regression coverage via `tests/kanban_regression.py`
 
 ## What Work OS manages
 ### Default model
@@ -59,14 +68,22 @@ tests/smoke.sh
 ```
 
 ## Kanban app
+### Local run
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements-kanban.txt
-uvicorn apps.kanban.main:app --reload
+uvicorn apps.kanban.main:app --host 0.0.0.0 --port 8010 --reload
 ```
 
-Then open `http://127.0.0.1:8000/board`.
+Then open `http://127.0.0.1:8010/board`.
+
+### Runtime notes
+- app entrypoint: `apps.kanban.main:app`
+- default runtime DB: `~/.openclaw/workspace/ops/workos/workos.db`
+- uploaded task files are stored under the owning project folder:
+  - `work/projects/<project-folder>/tasks/<task_id>/attachments/`
+- if upgrading from an older DB, app startup now migrates the `attachments` table to allow task attachments
 
 ## Docs
 - `docs/install.md`
@@ -75,6 +92,7 @@ Then open `http://127.0.0.1:8000/board`.
 - `docs/usage.md`
 - `docs/cli.md`
 - `docs/testing.md`
+- `docs/kanban.md`
 
 ## License
 MIT
