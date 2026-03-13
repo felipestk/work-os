@@ -87,6 +87,7 @@ function resetFilters() {
   const form = document.querySelector('.filters-form');
   if (!form) return;
   form.querySelectorAll('input[type="text"]').forEach((input) => { input.value = ''; });
+  form.querySelectorAll('input[type="hidden"]').forEach((input) => { input.value = ''; });
   form.querySelectorAll('select').forEach((select) => { select.selectedIndex = 0; });
   if (window.htmx) window.htmx.trigger(form, 'submit');
 }
@@ -124,6 +125,11 @@ function runCustomerSearch(input) {
   debounceSearch(input, () => fetchInto(`${searchUrl}?q=${encodeURIComponent(q)}`, results));
 }
 
+function autoSubmitFiltersFrom(element) {
+  const form = element.closest('.filters-form');
+  if (form && window.htmx) window.htmx.trigger(form, 'submit');
+}
+
 function applyProjectSelection(button) {
   const picker = button.closest('[data-project-picker]');
   if (!picker) return;
@@ -133,6 +139,7 @@ function applyProjectSelection(button) {
   if (hidden) hidden.value = button.dataset.projectId || '';
   if (input) input.value = button.dataset.projectLabel || '';
   clearResults(results);
+  autoSubmitFiltersFrom(picker);
 }
 
 function applyCustomerSelection(button) {
@@ -144,6 +151,7 @@ function applyCustomerSelection(button) {
   if (hidden) hidden.value = button.dataset.customerName || '';
   if (input) input.value = button.dataset.customerName || '';
   clearResults(results);
+  autoSubmitFiltersFrom(container);
 }
 
 function applyCustomerQuery(button) {

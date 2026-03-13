@@ -11,11 +11,6 @@
 
   <section class="board-filters">
     <form class="filters-form" hx-get="/board" hx-target="#board-shell" hx-swap="outerHTML">
-      <label>
-        <span>Search</span>
-        <input type="text" name="q" value="{{ filters.q if filters is defined else '' }}" placeholder="Title, description, project, customer">
-      </label>
-
       {% with origin='', target='project_id', value=(filters.project_id if filters is defined else ''), current_label=(filters.project_label if filters is defined else (filters.project_id if filters is defined else '')), label='Project', placeholder='Filter by project', search_url='/board/projects/filter-search' %}
         {% include 'partials/project_picker_field.html' %}
       {% endwith %}
@@ -25,11 +20,27 @@
       {% endwith %}
 
       <div class="filters-actions">
-        <button type="submit" class="secondary-button">Apply filters</button>
         <button type="button" class="ghost-button" data-reset-filters>Reset</button>
       </div>
     </form>
   </section>
+
+  {% if (filters.project_id if filters is defined else '') or (filters.customer_name if filters is defined else '') %}
+  <section class="active-filter-chips">
+    {% if filters.project_id %}
+      <form class="chip-form" hx-get="/board" hx-target="#board-shell" hx-swap="outerHTML">
+        <input type="hidden" name="customer_name" value="{{ filters.customer_name }}">
+        <button type="submit" class="filter-chip">Project: {{ filters.project_label }} ×</button>
+      </form>
+    {% endif %}
+    {% if filters.customer_name %}
+      <form class="chip-form" hx-get="/board" hx-target="#board-shell" hx-swap="outerHTML">
+        <input type="hidden" name="project_id" value="{{ filters.project_id }}">
+        <button type="submit" class="filter-chip">Customer: {{ filters.customer_name }} ×</button>
+      </form>
+    {% endif %}
+  </section>
+  {% endif %}
 
   <section id="board-columns" class="board-columns">
     {% include 'partials/board_columns.html' %}

@@ -23,10 +23,19 @@ h3 { font-size: 30px; line-height: 1; }
 .subtitle, .detail-section p, .empty-state { color: var(--muted); }
 .subtitle { max-width: 760px; font-size: 17px; }
 .board-filters { margin-bottom: 22px; border: 1px solid var(--border); background: var(--panel); padding: 14px; }
-.filters-form { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr auto; gap: 12px; align-items: end; }
+.filters-form { display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; align-items: end; }
 .filters-form label, .detail-edit-form label, .quick-add label { display: block; }
 .filters-form span, .detail-edit-form span, .quick-add span, .picker-field span, .modal-form span { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
 .filters-actions { display: flex; gap: 8px; }
+.active-filter-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: -6px 0 18px; }
+.chip-form { margin: 0; }
+.filter-chip {
+  width: auto;
+  padding: 8px 12px;
+  font-size: 12px;
+  background: var(--panel-soft);
+  border: 1px solid var(--border-strong);
+}
 .board-columns-grid { display: grid; grid-template-columns: repeat(5, minmax(220px, 1fr)); gap: 18px; align-items: start; }
 .board-column, .detail-panel, .detail-card, .task-card, .quick-add, .modal-card { border: 1px solid var(--border); background: var(--panel); }
 .board-column { padding: 16px; }
