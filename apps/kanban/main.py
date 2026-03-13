@@ -43,6 +43,7 @@ def board_context(request: Request, filters: dict[str, str] | None = None):
     active_filters = build_filters(**(filters or {}))
     grouped = list_board_tasks(filters=active_filters)
     active_filters['project_label'] = project_label_for(active_filters['project_id'])
+    active_filters['visible_task_count'] = sum(len(tasks) for tasks in grouped.values())
     return {
         'request': request,
         'board_name': BOARD_NAME,
@@ -78,8 +79,8 @@ def root() -> RedirectResponse:
 
 
 @app.get('/board', response_class=HTMLResponse)
-def board(request: Request, project_id: str = '', customer_name: str = '', q: str = ''):
-    return render_board_response(request, build_filters(project_id=project_id, customer_name=customer_name, q=q))
+def board(request: Request, project_id: str = '', customer_name: str = ''):
+    return render_board_response(request, build_filters(project_id=project_id, customer_name=customer_name))
 
 
 @app.get('/board/projects/search', response_class=HTMLResponse)

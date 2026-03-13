@@ -26,19 +26,25 @@
   </section>
 
   {% if (filters.project_id if filters is defined else '') or (filters.customer_name if filters is defined else '') %}
-  <section class="active-filter-chips">
-    {% if filters.project_id %}
-      <form class="chip-form" hx-get="/board" hx-target="#board-shell" hx-swap="outerHTML">
-        <input type="hidden" name="customer_name" value="{{ filters.customer_name }}">
-        <button type="submit" class="filter-chip">Project: {{ filters.project_label }} ×</button>
-      </form>
-    {% endif %}
-    {% if filters.customer_name %}
-      <form class="chip-form" hx-get="/board" hx-target="#board-shell" hx-swap="outerHTML">
-        <input type="hidden" name="project_id" value="{{ filters.project_id }}">
-        <button type="submit" class="filter-chip">Customer: {{ filters.customer_name }} ×</button>
-      </form>
-    {% endif %}
+  <section class="active-filter-bar">
+    <div class="active-filter-summary">
+      <span class="eyebrow">filtered board</span>
+      <span class="filter-summary-count">{{ filters.visible_task_count }} visible task{% if filters.visible_task_count != 1 %}s{% endif %}</span>
+    </div>
+    <div class="active-filter-chips">
+      {% if filters.project_id %}
+        <form class="chip-form" hx-get="/board" hx-target="#board-shell" hx-swap="outerHTML">
+          <input type="hidden" name="customer_name" value="{{ filters.customer_name }}">
+          <button type="submit" class="filter-chip">Project: {{ filters.project_label }} <span>×</span></button>
+        </form>
+      {% endif %}
+      {% if filters.customer_name %}
+        <form class="chip-form" hx-get="/board" hx-target="#board-shell" hx-swap="outerHTML">
+          <input type="hidden" name="project_id" value="{{ filters.project_id }}">
+          <button type="submit" class="filter-chip">Customer: {{ filters.customer_name }} <span>×</span></button>
+        </form>
+      {% endif %}
+    </div>
   </section>
   {% endif %}
 

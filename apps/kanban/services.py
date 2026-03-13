@@ -192,12 +192,10 @@ def list_filter_options() -> dict[str, list[str]]:
     return {'assignees': assignees, 'customers': customers}
 
 
-def build_filters(project_id: str = '', customer_name: str = '', q: str = '', assignee: str = '') -> dict[str, str]:
+def build_filters(project_id: str = '', customer_name: str = '') -> dict[str, str]:
     return {
         'project_id': (project_id or '').strip(),
         'customer_name': (customer_name or '').strip(),
-        'q': (q or '').strip(),
-        'assignee': (assignee or '').strip(),
     }
 
 
@@ -247,16 +245,9 @@ def list_board_tasks(board: str = BOARD_NAME, *, filters: dict[str, str] | None 
     if filters['project_id']:
         where.append('t.project_id = ?')
         params.append(filters['project_id'])
-    if filters['assignee']:
-        where.append('t.assignee = ?')
-        params.append(filters['assignee'])
     if filters['customer_name']:
         where.append('c.name = ?')
         params.append(filters['customer_name'])
-    if filters['q']:
-        like = f"%{filters['q']}%"
-        where.append('(t.title LIKE ? OR COALESCE(t.description, "") LIKE ? OR p.title LIKE ? OR c.name LIKE ?)')
-        params.extend([like, like, like, like])
     with connect() as conn:
         init_db(conn)
         rows = conn.execute(
