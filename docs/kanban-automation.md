@@ -2,6 +2,12 @@
 
 This document proposes the next expansion of the Work OS kanban app so tasks can be executed by OpenClaw agents in a controlled, reviewable workflow.
 
+It also refines the original plan to address the main blind spots:
+- whether the human review loop is actually the best possible shape
+- how output should be structured
+- whether revisions should be comments only
+- how to avoid ambiguity between task state, run state, and deliverable state
+
 ## Goal
 Use the kanban board as a human + agent execution loop.
 
@@ -10,10 +16,33 @@ The key idea is:
 - moving a task into `doing` is the explicit signal that the task is ready for execution
 - an OpenClaw agent can then claim the task and work it
 - the task is protected from conflicting edits while the agent is actively working
-- the result is sent to `review` for human feedback and approval
-- the human can move the task back to `doing` for another pass or to `done` when accepted
+- the result is sent into a structured review flow
+- the human can approve, request changes, or re-run with additional guidance
 
 This is a better operational model than triggering an agent run on task creation.
+
+---
+
+## Executive recommendation
+
+After pressure-testing the workflow, the recommended model is:
+- use `doing` as the execution trigger
+- use a queue-backed async execution worker
+- lock tasks while a run is active
+- treat each agent attempt as a separate **run** with its own status and output record
+- keep **task comments** for discussion and lightweight notes only
+- keep **structured outputs** in a dedicated output area tied to each run
+- make **review** a first-class decision point with explicit actions:
+  - approve
+  - request changes
+  - re-run
+  - reject / send back to planning
+
+The most important refinement is this:
+
+> The human should not need to use column movement alone to communicate review intent.
+
+Moving a task from `review` back to `doing` can still exist, but it should be the result of an explicit review action such as **Request changes**, not the only mechanism for feedback.
 
 ---
 
@@ -31,8 +60,8 @@ This is a better operational model than triggering an agent run on task creation
   - moving a task here queues agent work
   - task becomes execution-locked while actively claimed by an agent
 - `review`
-  - agent has completed a pass
-  - human reviews output and adds feedback if needed
+  - execution pass completed
+  - output is waiting for human decision
 - `done`
   - human-accepted completion
 
@@ -52,6 +81,266 @@ Moving to `doing` is a much better trigger because it means the human is saying:
 
 ---
 
+## Human review loop — refined recommendation
+
+### Original model
+The initial idea was:
+- task goes to `review`
+- human adds comments
+- human moves it back to `doing` if more work is needed
+
+That works, but it is not the cleanest possible model.
+
+### Problem with using movement alone as feedback
+If the only way to request another pass is moving `review -> doing`, several things become muddy:
+- *why* it was moved back is not explicit
+- the difference between “re-run unchanged” and “re-run with feedback” is unclear
+- it is harder to preserve a clean revision history
+- the board column starts carrying too much semantic meaning
+
+### Better model
+Keep the columns, but add explicit review actions.
+
+When a task is in `review`, the human should be able to choose one of these actions:
+- **Approve**
+  - move task to `done`
+- **Request changes**
+  - create a structured revision request
+  - reopen the task for another execution pass
+  - move task to `doing`
+- **Re-run**
+  - no major revision note required
+  - useful for transient failures or “try again with same brief”
+  - move task to `doing`
+- **Send back to planning**
+  - move task to `todo` or `backlog`
+  - indicates task was not actually ready / needs redefinition
+
+This gives the human a cleaner operating model.
+
+### Recommended semantic rule
+Column movement should represent **state**.
+Review buttons/actions should represent **intent**.
+
+That is a much better long-term design.
+
+---
+
+## Output model — most important design decision
+
+This is where the system can either become very usable or very messy.
+
+### Recommendation
+Do **not** treat comments as the only output channel.
+
+Comments are good for:
+- short human notes
+- revision requests
+- quick observations
+- run status messages
+
+Comments are **not** a great primary container for agent output because output may be:
+- a summary text
+- a website URL
+- multiple artifact files
+- edited project files
+- structured results
+- follow-up actions
+- blocker explanations
+
+### Best model
+Each execution pass should create a structured **run output** record.
+
+That means output should live in one dedicated place per run, with comments sitting alongside it as discussion.
+
+This separates:
+- conversational feedback
+- machine execution record
+- actual deliverables
+
+That separation will save a lot of pain later.
+
+---
+
+## Recommended information architecture
+
+### 1) Task
+The task is the long-lived work item.
+
+It should store:
+- task title
+- task description
+- project link
+- current board state
+- execution settings/flags
+- overall latest status
+
+### 2) Run
+A run is one execution attempt by an agent.
+
+It should store:
+- run status
+- who/what ran it
+- timestamps
+- run summary
+- outcome class (`success`, `blocked`, `failed`, `cancelled`)
+- links to outputs/artifacts
+
+### 3) Output
+An output is the structured result of a run.
+
+It should store or reference:
+- summary text
+- main result body (if textual)
+- website/app URL if relevant
+- files/attachments if relevant
+- changed file paths if relevant
+- follow-up notes
+- warnings/blockers
+
+### 4) Comments / review notes
+Comments should stay comments.
+
+Use them for:
+- human feedback
+- review notes
+- clarifying questions
+- small discussion points
+- system status notes
+
+This gives four clean layers instead of stuffing everything into a single task timeline.
+
+---
+
+## Recommended output structure
+
+### Per-run output section
+Each task should expose an **Outputs** section.
+
+This section should list execution runs in reverse chronological order.
+
+For each run, show:
+- run id
+- status
+- agent/runtime
+- started/finished timestamps
+- concise summary
+- output type(s)
+- primary links/files
+- blockers/warnings
+- review status
+
+### Output types to support explicitly
+At minimum, the output model should handle these types:
+- `text`
+- `url`
+- `attachment`
+- `file_reference`
+- `structured_json`
+
+Examples:
+- text summary of research
+- deployed preview URL
+- generated proposal PDF attachment
+- edited files under a project folder
+- JSON-like structured extraction or analysis result
+
+### Primary output + supporting outputs
+Each run should be able to identify:
+- one **primary output**
+- zero or more supporting outputs
+
+Examples:
+- primary output = preview URL
+- supporting outputs = changed files, screenshots, summary note
+
+or:
+- primary output = markdown summary
+- supporting outputs = attachment bundle, logs
+
+This makes the UI much easier to read.
+
+### Recommended output schema concept
+Possible fields for a run output record:
+- `id`
+- `run_id`
+- `output_kind`
+- `title`
+- `summary`
+- `body_text`
+- `url`
+- `attachment_id`
+- `file_path`
+- `mime_type`
+- `is_primary`
+- `sort_order`
+- `metadata_json`
+- `created_at`
+
+---
+
+## Should all output be in one place?
+
+### Yes, but with structure
+The answer is **yes**, but not as one giant blob.
+
+It does make sense for each task to have one place where the human can inspect results.
+But inside that place, the output needs structure.
+
+So the right model is:
+- task has an **Outputs** section
+- Outputs section contains one or more **run outputs**
+- each run output contains structured items
+- comments/review sit nearby, but are not the output itself
+
+### Why this is better
+Without a dedicated output section, the user has to reconstruct work from:
+- status comments
+- scattered links
+- attached files
+- maybe edited files in the project tree
+
+That becomes painful fast.
+
+A dedicated output section gives the task a reliable “result surface.”
+
+---
+
+## Revision model — comments alone are not enough
+
+### Recommendation
+Revision should not be modeled as freeform comments only.
+
+Comments are useful, but a revision request needs a stronger structure.
+
+### Better model
+Add a **review decision** or **revision request** record tied to a task and optionally to a specific run.
+
+Possible fields:
+- `id`
+- `task_id`
+- `run_id`
+- `decision_type` (`approve`, `request_changes`, `rerun`, `reject`)
+- `body`
+- `author`
+- `created_at`
+
+### Why this matters
+This makes it possible to tell the difference between:
+- “looks good” comment
+- actual approval
+- request for a new pass
+- request to redo from scratch
+- incidental discussion
+
+That distinction is extremely useful for automation and audit history.
+
+### Human UX recommendation
+In the UI, the human can still type a note in the same drawer.
+But under the hood, if they click **Request changes**, that note should be stored as a structured review decision, not just a plain comment.
+
+---
+
 ## Recommended completion behavior
 
 ### Preferred model
@@ -63,11 +352,13 @@ Recommended loop:
 1. human moves task to `doing`
 2. queue records an automation job
 3. agent runs
-4. agent posts summary / outputs
+4. agent writes structured output and summary
 5. task moves to `review`
-6. human either:
-   - moves back to `doing` with feedback/comments, or
-   - moves to `done`
+6. human chooses one of:
+   - approve → `done`
+   - request changes → create revision record and move to `doing`
+   - re-run → create new run and move to `doing`
+   - send back to planning → `todo` or `backlog`
 
 ### Optional future mode
 A future setting can allow some projects or tasks to auto-complete directly to `done`, but this should not be the default.
@@ -78,7 +369,7 @@ A future setting can allow some projects or tasks to auto-complete directly to `
 The kanban app should **not** become its own mini agent platform.
 
 Instead:
-- Work OS manages task state, locking, queueing, and visibility
+- Work OS manages task state, locking, queueing, visibility, outputs, and review records
 - OpenClaw performs the actual execution work
 
 This separation is important.
@@ -88,8 +379,9 @@ This separation is important.
 - automation settings
 - run queue management
 - locking / claim semantics
+- output storage/indexing
+- review decision storage
 - status display
-- writeback storage
 - operator controls (cancel, retry, unlock)
 
 ### OpenClaw responsibilities
@@ -97,7 +389,7 @@ This separation is important.
 - perform the requested work
 - create or edit artifacts
 - report blockers
-- summarize results
+- write a structured result back
 - signal completion state back to Work OS
 
 This keeps the kanban app operationally simple while letting OpenClaw do what it is good at.
@@ -124,12 +416,14 @@ Possible additions to the task model:
 - `claimed_at`
 - `last_run_status`
 - `last_run_at`
+- `current_review_state`
 - `review_required`
 - `retry_count`
 
 These fields let Work OS distinguish:
 - a task that is visually in `doing`
 - a task that is actually claimed and locked by a running agent
+- a task that is in `review` but awaiting a formal decision
 
 ---
 
@@ -143,6 +437,7 @@ When a task is moved to `doing` and an automation job is queued:
 ### Recommended lock policy while agent is active
 Allowed:
 - add comments
+- add review guidance before the run starts if it is still only queued
 - view task details
 - cancel run
 - force unlock / reclaim
@@ -153,6 +448,11 @@ Blocked or restricted:
 - changing project assignment
 - moving to another column without override
 - deleting or altering critical run-related attachments
+
+### Important nuance
+If the task is only **queued** and has not yet been claimed by a worker, a human override may still be reasonable.
+
+Once the run is actually **running**, the lock should be stricter.
 
 This avoids race conditions between human edits and agent execution.
 
@@ -212,9 +512,42 @@ Suggested fields:
 - `agent_id`
 - `model`
 - `status`
+- `outcome_class` (`success`, `blocked`, `failed`, `cancelled`)
 - `summary`
 - `started_at`
 - `finished_at`
+
+### `automation_outputs`
+Purpose: structured result items tied to a run.
+
+Suggested fields:
+- `id`
+- `run_id`
+- `task_id`
+- `output_kind`
+- `title`
+- `summary`
+- `body_text`
+- `url`
+- `attachment_id`
+- `file_path`
+- `mime_type`
+- `is_primary`
+- `sort_order`
+- `metadata_json`
+- `created_at`
+
+### `review_decisions`
+Purpose: formal human review actions.
+
+Suggested fields:
+- `id`
+- `task_id`
+- `run_id`
+- `decision_type` (`approve`, `request_changes`, `rerun`, `reject`)
+- `body`
+- `author`
+- `created_at`
 
 ### `automation_settings`
 Purpose: global and project-level automation configuration.
@@ -243,6 +576,8 @@ Minimum recommended settings:
 - completion target (`review` recommended)
 - allow comments while locked
 - allow admin override
+- require structured output on completion
+- allow direct-auto-done (default: false)
 
 ### Per-project settings
 Per-project overrides are strongly recommended because different projects may need different execution behavior.
@@ -255,6 +590,8 @@ Recommended project-level settings:
 - retry policy
 - max concurrency
 - whether direct human overrides are allowed
+- default output expectations
+- review strictness level
 
 ### Future task-level flags
 Possible future additions:
@@ -262,6 +599,7 @@ Possible future additions:
 - `auto_complete_allowed`
 - `requires_human_review`
 - `execution_profile`
+- `expected_output_kind`
 
 ---
 
@@ -289,14 +627,17 @@ Each run should get a structured execution brief including:
 - task id
 - task title
 - task description
-- task comments or review notes as needed
+- current review/revision context
+- prior run outputs when relevant
 - linked attachments or relevant file paths
 - expected completion behavior
+- expected output structure
 
 Example behavior contract:
 - work under the task's project folder
 - produce files/artifacts there
-- write back a task summary
+- write back a structured task result
+- set one primary output
 - move the task to `review` when complete
 - if blocked, keep the task in `doing` and report the blocker
 
@@ -329,19 +670,26 @@ OpenClaw behavior:
 - creates/edits artifacts as needed
 - reports blockers if it cannot continue
 
-### 4) Writeback
+### 4) Structured writeback
 On completion, the run should write back:
-- summary of what was done
-- artifact or file references
-- any warnings/blockers/follow-ups
+- run summary
+- one primary output
+- zero or more supporting outputs
+- warnings/blockers/follow-ups
 - execution result status
 
 ### 5) Completion transition
 Recommended default:
 - success → move task to `review`
-- blocked/failed → keep task in `doing` and add failure/blocker comment
-- human accepted → move task to `done`
-- human wants changes → add comments and move back to `doing`
+- blocked/failed → keep task in `doing` and add failure/blocker note
+- cancelled → unlock task and keep in `doing` or return to `todo`
+
+### 6) Human review decision
+In `review`, the human should choose one of:
+- approve → `done`
+- request changes → store review decision and move to `doing`
+- re-run → create new run and move to `doing`
+- reject/send back to planning → move to `todo` or `backlog`
 
 ---
 
@@ -351,13 +699,50 @@ To make this workable day to day, the board should expose operator controls for 
 Recommended controls:
 - show locked/running badge on tasks
 - show queued/running/failed/review-needed state
+- show latest primary output summary on the task detail view
+- dedicated Outputs section per task
+- dedicated Review panel per task
 - cancel run
 - force unlock
 - requeue
-- move back to `todo`
-- move back to `doing` after review comments
+- approve
+- request changes
+- send back to planning
 
 This matters because automation without clear operator controls quickly becomes frustrating.
+
+---
+
+## Task detail UX recommendation
+The task drawer/page should eventually have distinct sections:
+
+### 1) Task brief
+- title
+- description
+- project
+- metadata
+
+### 2) Execution status
+- queued/running/review/done/failed
+- last run info
+- lock state
+
+### 3) Outputs
+- list of runs
+- primary output highlighted
+- attachments, URLs, summaries
+
+### 4) Review
+- formal review decisions
+- revision requests
+- approval status
+
+### 5) Comments
+- general human discussion
+- small notes
+- system notes if desired
+
+This is much cleaner than a single mixed activity stream.
 
 ---
 
@@ -378,6 +763,12 @@ Need a clear state rule:
 - failure/blocker → remain `doing`
 - accepted by human → `done`
 
+### Output ambiguity
+Need a structured output model so the operator does not have to reconstruct results from comments.
+
+### Review ambiguity
+Need structured review decisions so approval, rejection, and revision are not hidden inside ordinary comments.
+
 ### Retry behavior
 A failed run should not loop forever.
 
@@ -392,6 +783,8 @@ Operators need a way to inspect:
 - running jobs
 - failed jobs
 - last run status per task
+- latest primary output per task
+- latest formal review decision per task
 
 Without this, the automation becomes a black box.
 
@@ -405,7 +798,8 @@ Define and document:
 - locking rules
 - queue schema
 - run status model
-- writeback behavior
+- structured output model
+- review decision model
 - settings hierarchy
 
 Deliverable:
@@ -415,6 +809,8 @@ Deliverable:
 Implement:
 - `automation_queue`
 - `automation_runs`
+- `automation_outputs`
+- `review_decisions`
 - settings storage
 - task execution metadata fields
 - lock/unlock service functions
@@ -439,18 +835,19 @@ Implement:
 - run claiming
 - OpenClaw execution bridge
 - status updates
-- writeback comments
+- structured writeback
 - transition to `review` on success
 
 Deliverable:
 - end-to-end asynchronous execution flow
 
-### Phase 5 — UI and operator controls
+### Phase 5 — review and output UX
 Implement:
-- run state indicators
-- task lock indicators
-- cancel / retry / force unlock controls
-- review guidance
+- Outputs section
+- Review section
+- primary output presentation
+- approve / request changes / rerun actions
+- lock and run state indicators
 
 Deliverable:
 - usable human + agent interaction model
@@ -462,6 +859,7 @@ Implement:
 - retry limits
 - concurrency limits
 - audit visibility
+- output requirements / validation
 
 Deliverable:
 - safer operational model
@@ -484,18 +882,25 @@ If the goal is to prove the model quickly without overbuilding it, start here:
 
 ### v1 implementation slice
 - add `automation_queue`
+- add `automation_runs`
+- add minimal `automation_outputs`
+- add minimal `review_decisions`
 - add minimal task execution lock metadata
 - trigger queue record when task enters `doing`
 - build one worker process
 - worker launches one bounded OpenClaw run per task
 - on success:
-  - add summary comment
+  - add structured summary output
   - move task to `review`
   - unlock task
 - on failure:
-  - add failure comment
+  - add structured failure output or note
   - keep task in `doing`
   - unlock task or mark failed
+- add review actions:
+  - approve
+  - request changes
+  - rerun
 
 This is enough to validate the workflow before adding more advanced policy layers.
 
@@ -506,7 +911,11 @@ For Work OS, the best expansion path is:
 - use `doing` as the explicit automation trigger
 - keep execution asynchronous via `automation_queue`
 - lock tasks while an OpenClaw agent is actively working them
+- treat each attempt as a separate run
+- store output in a dedicated structured Outputs area
+- keep comments for discussion, not as the only deliverable container
+- use explicit review decisions rather than relying on column movement alone
 - move successful runs to `review` by default
-- let humans control acceptance, feedback, re-runs, and final completion
+- let humans control approval, revision, re-runs, and final completion
 
-This provides a strong collaboration model between human operators and OpenClaw without turning the board into a fragile black box.
+This provides a much stronger collaboration model between human operators and OpenClaw and closes several likely blind spots before implementation starts.
