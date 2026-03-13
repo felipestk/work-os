@@ -159,6 +159,13 @@ def require_task(conn, task_id):
     return row
 
 
+def require_task_comment(conn, comment_id):
+    row = conn.execute('SELECT * FROM task_comments WHERE id=?', (comment_id,)).fetchone()
+    if not row:
+        raise ValueError(f"Unknown task comment: {comment_id}")
+    return row
+
+
 def ensure_attachment_entity(conn, entity_type, entity_ref):
     if entity_type == 'task':
         require_task(conn, int(entity_ref))
@@ -313,19 +320,42 @@ def cmd_project_list(args):
     with connect() as conn:
         init_db(conn)
         q = """
-        SELECT p.id, p.title, c.name AS customer, p.status, p.updated_at, p.folder_path
+        SELECT p.id, p.title, c.name AS customer, p.status, p.updated_at, p.folder_path,
+               COUNT(t.id) AS task_count,
+               SUM(CASE WHEN t.status = 'todo' THEN 1 ELSE 0 END) AS todo_tasks,
+               SUM(CASE WHEN t.status = 'in_progress' THEN 1 ELSE 0 END) AS in_progress_tasks,
+               SUM(CASE WHEN t.status = 'blocked' THEN 1 ELSE 0 END) AS blocked_tasks,
+               SUM(CASE WHEN t.status = 'done' THEN 1 ELSE 0 END) AS done_tasks,
+               SUM(CASE WHEN t.status = 'archived' THEN 1 ELSE 0 END) AS archived_tasks
         FROM projects p
         JOIN customers c ON c.id = p.customer_id
+        LEFT JOIN tasks t ON t.project_id = p.id
         """
         params = []
         where = []
+        having = []
         if args.customer:
             where.append('(c.customer_code = ? OR c.name = ?)')
             params += [args.customer, args.customer]
         if args.active:
             where.append("p.status IN ('active','blocked')")
+        if args.status:
+            where.append('p.status = ?')
+            params.append(args.status)
+        if not args.include_archived_tasks:
+            where.append("(t.id IS NULL OR t.status != 'archived')")
+        if args.task_status:
+            having.append("SUM(CASE WHEN t.status = ? THEN 1 ELSE 0 END) > 0")
+            params.append(args.task_status)
+        if args.has_open_tasks:
+            having.append("SUM(CASE WHEN t.status IN ('todo','in_progress','blocked') THEN 1 ELSE 0 END) > 0")
+        if args.has_blocked_tasks:
+            having.append("SUM(CASE WHEN t.status = 'blocked' THEN 1 ELSE 0 END) > 0")
         if where:
             q += ' WHERE ' + ' AND '.join(where)
+        q += ' GROUP BY p.id, p.title, c.name, p.status, p.updated_at, p.folder_path'
+        if having:
+            q += ' HAVING ' + ' AND '.join(having)
         q += ' ORDER BY p.updated_at DESC LIMIT ?'
         params.append(args.limit)
         rows = [dict(r) for r in conn.execute(q, params)]
@@ -801,6 +831,64 @@ def cmd_task_comment_add(args):
         conn.commit()
     print(json.dumps({'id': cur.lastrowid, 'task_id': args.task, 'comment_type': args.comment_type}))
 
+def cmd_task_comment_list(args):
+    with connect() as conn:
+        init_db(conn)
+        require_task(conn, args.task)
+        rows = [dict(r) for r in conn.execute(
+            'SELECT id, task_id, comment_type, body, author, created_at, updated_at FROM task_comments WHERE task_id=? ORDER BY created_at ASC, id ASC',
+            (args.task,),
+        )]
+    print_rows(rows, table=args.table)
+
+
+def cmd_task_comment_show(args):
+    with connect() as conn:
+        init_db(conn)
+        row = require_task_comment(conn, args.comment_id)
+    print(json.dumps(dict(row), indent=2, ensure_ascii=False))
+
+
+def cmd_task_comment_edit(args):
+    with connect() as conn:
+        init_db(conn)
+        row = require_task_comment(conn, args.comment_id)
+        body = args.body if args.body is not None else row['body']
+        author = args.author if args.author is not None else row['author']
+        comment_type = args.comment_type if args.comment_type is not None else row['comment_type']
+        conn.execute(
+            'UPDATE task_comments SET body=?, author=?, comment_type=? WHERE id=?',
+            (body, author, comment_type, args.comment_id),
+        )
+        conn.commit()
+    print(json.dumps({'id': args.comment_id, 'task_id': row['task_id'], 'comment_type': comment_type}))
+
+
+def cmd_task_board(args):
+    with connect() as conn:
+        init_db(conn)
+        require_project(conn, args.project)
+        q = """
+        SELECT id, title, status, priority, board, column_key, wip_order, assignee, due_at, updated_at
+        FROM tasks
+        WHERE project_id = ?
+        """
+        params = [args.project]
+        if args.board:
+            q += ' AND board = ?'
+            params.append(args.board)
+        if not args.include_archived:
+            q += " AND status != 'archived'"
+        q += " ORDER BY COALESCE(board,''), COALESCE(column_key,''), COALESCE(wip_order, sort_order), id"
+        rows = [dict(r) for r in conn.execute(q, params)]
+    grouped = {}
+    for r in rows:
+        board = r.get('board') or '(no board)'
+        col = r.get('column_key') or '(no column)'
+        grouped.setdefault(board, {}).setdefault(col, []).append(r)
+    print(json.dumps(grouped, indent=2, ensure_ascii=False))
+
+
 def cmd_task_update(args):
     with connect() as conn:
         init_db(conn)
@@ -1031,7 +1119,12 @@ def build_parser():
 
     sp = psub.add_parser('list')
     sp.add_argument('--customer')
+    sp.add_argument('--status', choices=['active', 'blocked', 'completed', 'archived'])
     sp.add_argument('--active', action='store_true')
+    sp.add_argument('--task-status', choices=['todo', 'in_progress', 'blocked', 'done', 'cancelled', 'archived'])
+    sp.add_argument('--has-open-tasks', action='store_true')
+    sp.add_argument('--has-blocked-tasks', action='store_true')
+    sp.add_argument('--include-archived-tasks', action='store_true')
     sp.add_argument('--limit', type=int, default=50)
     sp.add_argument('--table', action='store_true')
     sp.set_defaults(func=cmd_project_list)
@@ -1145,6 +1238,12 @@ def build_parser():
     sp.add_argument('--task', type=int, required=True)
     sp.set_defaults(func=cmd_task_show)
 
+    sp = tsub.add_parser('board')
+    sp.add_argument('--project', required=True)
+    sp.add_argument('--board')
+    sp.add_argument('--include-archived', action='store_true')
+    sp.set_defaults(func=cmd_task_board)
+
     sp = tsub.add_parser('update')
     sp.add_argument('--task', type=int, required=True)
     sp.add_argument('--parent-task-id', type=int)
@@ -1199,6 +1298,22 @@ def build_parser():
     sp.add_argument('--author')
     sp.add_argument('--comment-type', default='comment', choices=['comment', 'system'])
     sp.set_defaults(func=cmd_task_comment_add)
+
+    sp = csub.add_parser('list')
+    sp.add_argument('--task', type=int, required=True)
+    sp.add_argument('--table', action='store_true')
+    sp.set_defaults(func=cmd_task_comment_list)
+
+    sp = csub.add_parser('show')
+    sp.add_argument('--comment-id', type=int, required=True)
+    sp.set_defaults(func=cmd_task_comment_show)
+
+    sp = csub.add_parser('edit')
+    sp.add_argument('--comment-id', type=int, required=True)
+    sp.add_argument('--body')
+    sp.add_argument('--author')
+    sp.add_argument('--comment-type', choices=['comment', 'system'])
+    sp.set_defaults(func=cmd_task_comment_edit)
 
     offer = sub.add_parser('offer')
     osub = offer.add_subparsers(dest='sub', required=True)
