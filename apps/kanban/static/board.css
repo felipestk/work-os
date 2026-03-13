@@ -45,10 +45,7 @@ body {
 }
 
 .header-copy {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
-  gap: 24px;
-  align-items: start;
+  display: block;
 }
 
 h1, h2, h3 {
@@ -86,7 +83,9 @@ h3 { font-size: 22px; margin-bottom: 10px; }
 .column-header {
   display: flex;
   justify-content: space-between;
+  gap: 12px;
   margin-bottom: 14px;
+  align-items: center;
 }
 
 .column-label {
@@ -101,6 +100,13 @@ h3 { font-size: 22px; margin-bottom: 10px; }
   font-size: 12px;
 }
 
+.column-add-toggle {
+  width: auto;
+  background: white;
+  color: var(--text);
+  white-space: nowrap;
+}
+
 .quick-add {
   padding: 12px;
   margin-bottom: 14px;
@@ -112,6 +118,10 @@ h3 { font-size: 22px; margin-bottom: 10px; }
   font-size: 12px;
   color: var(--muted);
   margin-bottom: 6px;
+}
+.quick-add-actions {
+  display: flex;
+  gap: 8px;
 }
 input, textarea, button {
   width: 100%;
@@ -167,15 +177,23 @@ button:hover { background: var(--accent); }
 }
 .task-actions {
   padding: 0 14px 14px;
+  align-items: center;
 }
 .task-actions form,
 .detail-actions form {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
 }
+.task-actions .archive-action { margin-left: auto; }
 .task-actions button,
 .detail-actions button,
 .detail-close {
   width: auto;
+}
+.move-button {
+  min-width: 40px;
+  padding: 8px 12px;
+  font-size: 18px;
+  line-height: 1;
 }
 .secondary-button {
   background: white;
@@ -187,8 +205,37 @@ button:hover { background: var(--accent); }
 }
 .empty-state { padding: 12px 2px; }
 
-.detail-panel, .detail-card { min-height: 220px; }
-.detail-panel { padding: 18px; }
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(26, 26, 26, 0.18);
+  z-index: 40;
+}
+.detail-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: 100vh;
+  width: min(520px, 92vw);
+  transform: translateX(100%);
+  transition: transform 0.2s ease;
+  z-index: 50;
+  pointer-events: none;
+}
+.detail-drawer.is-open {
+  transform: translateX(0);
+  pointer-events: auto;
+}
+.detail-panel,
+.detail-card {
+  min-height: 100%;
+  background: var(--panel);
+}
+.detail-panel {
+  padding: 24px;
+  overflow-y: auto;
+  height: 100%;
+}
 .detail-placeholder { color: var(--soft); }
 .detail-header {
   display: flex;
@@ -209,7 +256,6 @@ button:hover { background: var(--accent); }
 .detail-list { padding-left: 18px; color: var(--muted); }
 
 @media (max-width: 1280px) {
-  .header-copy { grid-template-columns: 1fr; }
   .board-columns-grid { grid-template-columns: repeat(2, minmax(240px, 1fr)); }
 }
 

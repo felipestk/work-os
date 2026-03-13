@@ -4,9 +4,14 @@
       <p class="column-label">{{ column_label }}</p>
       <p class="column-count">{{ counts[column_key] }} task{% if counts[column_key] != 1 %}s{% endif %}</p>
     </div>
+    {% if column_key == 'backlog' %}
+      <button type="button" class="column-add-toggle" data-quick-add-toggle="{{ column_key }}">+ Add task</button>
+    {% endif %}
   </header>
 
-  {% include 'partials/task_quick_add.html' %}
+  {% if column_key == 'backlog' %}
+    {% include 'partials/task_quick_add.html' %}
+  {% endif %}
 
   <div class="task-stack">
     {% for task in grouped[column_key] %}

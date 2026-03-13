@@ -23,18 +23,18 @@
     {% if task.previous_column %}
       <form hx-post="/board/tasks/{{ task.id }}/move" hx-target="#board-columns" hx-swap="outerHTML">
         <input type="hidden" name="column_key" value="{{ task.previous_column }}">
-        <button type="submit" class="secondary-button">← {{ columns[task.previous_column] }}</button>
+        <button type="submit" class="secondary-button move-button" title="Move to {{ columns[task.previous_column] }}">←</button>
       </form>
     {% endif %}
 
     {% if task.next_column %}
       <form hx-post="/board/tasks/{{ task.id }}/move" hx-target="#board-columns" hx-swap="outerHTML">
         <input type="hidden" name="column_key" value="{{ task.next_column }}">
-        <button type="submit" class="secondary-button">{{ columns[task.next_column] }} →</button>
+        <button type="submit" class="secondary-button move-button" title="Move to {{ columns[task.next_column] }}">→</button>
       </form>
     {% endif %}
 
-    <form hx-post="/board/tasks/{{ task.id }}/archive" hx-target="#board-columns" hx-swap="outerHTML">
+    <form class="archive-action" hx-post="/board/tasks/{{ task.id }}/archive" hx-target="#board-columns" hx-swap="outerHTML">
       <button type="submit" class="ghost-button">archive</button>
     </form>
   </div>
