@@ -18,66 +18,43 @@ Store live data under the OpenClaw workspace:
 Install the skill into the OpenClaw workspace skill directory:
 - `~/.openclaw/workspace/skills/work-os/`
 
-This matches OpenClaw's normal skill discovery behavior.
-
 ## User-level install
 ```bash
+git clone https://github.com/felipestk/work-os.git openclaw-workos
+cd openclaw-workos
 scripts/install.sh
-```
-
-The installer checks for `sqlite3` first. If it is missing, it attempts to install it automatically using a supported package manager (`apt-get`, `dnf`, `yum`, `apk`, `pacman`, or `brew`). If that fails, it stops with a clear manual-install instruction.
-
-This installs the repo contents to:
-- `$HOME/.local/share/openclaw-workos`
-
-And symlinks:
-- `$HOME/.local/bin/workctl`
-
-It also installs the included skill to:
-- `~/.openclaw/workspace/skills/work-os/`
-
-And writes:
-- `$HOME/.local/share/openclaw-workos/env.sh`
-
-That file exports:
-- `OPENCLAW_WORKSPACE`
-- `OPENCLAW_WORKSPACE_SKILLS_DIR`
-- `WORKCTL_DB_PATH`
-- `WORKCTL_PROJECTS_ROOT`
-- `WORKCTL_CUSTOMERS_ROOT`
-- `PATH`
-
-## Make `workctl` callable from everywhere
-After install, run:
-
-```bash
 source "$HOME/.local/share/openclaw-workos/env.sh"
+workctl doctor
 ```
 
-To make it persistent, add this to your shell profile (`.bashrc`, `.zshrc`, etc.):
+The installer:
+- checks for `sqlite3`
+- attempts package-manager install when possible
+- installs toolkit files under `$HOME/.local/share/openclaw-workos`
+- symlinks `workctl` into `$HOME/.local/bin`
+- installs the `work-os` skill into `~/.openclaw/workspace/skills/work-os/`
+- writes `$HOME/.local/share/openclaw-workos/env.sh`
 
+## Recommended post-install validation
 ```bash
-source "$HOME/.local/share/openclaw-workos/env.sh"
+workctl doctor
+tests/smoke.sh
 ```
 
-## Required AGENTS.md integration
-Installing the toolkit and skill is not the whole story.
-To make the receiving OpenClaw actually enforce customer-linked project tracking, add the recommended Work OS policy block to that host's `AGENTS.md`.
+Expected outcome:
+- `workctl` runs from shell
+- DB path resolves into the workspace
+- skill exists under workspace skills
+- smoke test passes on the target host
 
-Use:
+## Required OpenClaw integration
+To make the receiving OpenClaw actually follow Work OS conventions, also apply:
 - `docs/agents-policy-snippet.md`
+- `docs/tools-snippet.md`
+- `docs/openclaw-integration.md`
 
-This is the recommended post-install step for any serious Work OS deployment.
-
-## Skill readiness after install
-The installer copies the included `work-os` skill into the OpenClaw workspace skills directory.
-
-That means the receiving OpenClaw instance should already have:
-- the CLI/toolkit installed
-- the runtime paths configured
-- the skill available for discovery
-
-The `AGENTS.md` policy block is what makes the behavior mandatory rather than optional.
+The installer makes the toolkit available.
+The policy/docs integration makes the behavior reliable.
 
 ## Local repo usage
 For repo-local demo/testing only:
@@ -91,4 +68,4 @@ tests/smoke.sh
 ## Notes
 - Runtime DBs are not tracked in git.
 - Demo data can be loaded with `scripts/bootstrap.sh`.
-- The packaged `.skill` artifact in `dist/` is optional distribution output; normal repo install does not require it.
+- Tasks are an optional extension layer; the default workflow is still customer → project → offer/activity.

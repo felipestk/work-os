@@ -200,6 +200,41 @@ def file_checksum(path: Path) -> str:
     return h.hexdigest()
 
 
+def get_task_comments(conn, task_id):
+    return [dict(r) for r in conn.execute(
+        'SELECT id, task_id, comment_type, body, author, created_at, updated_at FROM task_comments WHERE task_id=? ORDER BY created_at ASC, id ASC',
+        (task_id,),
+    )]
+
+
+def get_task_attachments(conn, task_id):
+    return [dict(r) for r in conn.execute(
+        "SELECT id, file_path, mime_type, checksum, created_at FROM attachments WHERE entity_type='task' AND entity_ref=? ORDER BY created_at ASC, id ASC",
+        (str(task_id),),
+    )]
+
+
+def add_task_system_comment(conn, task_id, note, author='workctl'):
+    conn.execute(
+        "INSERT INTO task_comments(task_id, comment_type, body, author) VALUES (?, 'system', ?, ?)",
+        (task_id, note, author),
+    )
+
+
+def apply_task_status_transition(task, new_status, completed_at=None):
+    started_at = task['started_at']
+    final_completed_at = task['completed_at']
+    if new_status == 'in_progress' and not started_at:
+        started_at = now_iso()
+    if new_status == 'done':
+        final_completed_at = completed_at or now_iso()
+        if not started_at:
+            started_at = final_completed_at
+    elif new_status != 'done' and completed_at is not None:
+        final_completed_at = completed_at
+    return started_at, final_completed_at
+
+
 def cmd_init(_args):
     with connect() as conn:
         init_db(conn)
@@ -724,10 +759,7 @@ def cmd_task_create(args):
         )
         task_id = cur.lastrowid
         if args.note:
-            conn.execute(
-                "INSERT INTO task_comments(task_id, comment_type, body, author) VALUES (?, 'system', ?, ?)",
-                (task_id, args.note, 'workctl'),
-            )
+            add_task_system_comment(conn, task_id, args.note)
         conn.commit()
     print(json.dumps({'id': task_id, 'project': args.project, 'title': args.title, 'status': args.status}))
 
@@ -780,14 +812,8 @@ def cmd_task_show(args):
     with connect() as conn:
         init_db(conn)
         task = dict(require_task(conn, args.task))
-        comments = [dict(r) for r in conn.execute(
-            'SELECT id, comment_type, body, author, created_at, updated_at FROM task_comments WHERE task_id=? ORDER BY created_at ASC, id ASC',
-            (args.task,),
-        )]
-        attachments = [dict(r) for r in conn.execute(
-            "SELECT id, file_path, mime_type, checksum, created_at FROM attachments WHERE entity_type='task' AND entity_ref=? ORDER BY created_at ASC, id ASC",
-            (str(args.task),),
-        )]
+        comments = get_task_comments(conn, args.task)
+        attachments = get_task_attachments(conn, args.task)
         task['comments'] = comments
         task['attachments'] = attachments
     print(json.dumps(task, indent=2, ensure_ascii=False))
@@ -797,25 +823,13 @@ def cmd_task_status(args):
     with connect() as conn:
         init_db(conn)
         task = require_task(conn, args.task)
-        started_at = task['started_at']
-        completed_at = task['completed_at']
-        if args.status == 'in_progress' and not started_at:
-            started_at = now_iso()
-        if args.status == 'done':
-            completed_at = args.completed_at or now_iso()
-            if not started_at:
-                started_at = completed_at
-        elif args.status != 'done' and args.completed_at is not None:
-            completed_at = args.completed_at
+        started_at, completed_at = apply_task_status_transition(task, args.status, args.completed_at)
         board = args.board if args.board is not None else task['board']
         column_key = args.column_key if args.column_key is not None else task['column_key']
         wip_order = args.wip_order if args.wip_order is not None else task['wip_order']
         conn.execute('UPDATE tasks SET status=?, started_at=?, completed_at=?, board=?, column_key=?, wip_order=? WHERE id=?', (args.status, started_at, completed_at, board, column_key, wip_order, args.task))
         if args.note:
-            conn.execute(
-                "INSERT INTO task_comments(task_id, comment_type, body, author) VALUES (?, 'system', ?, ?)",
-                (args.task, args.note, 'workctl'),
-            )
+            add_task_system_comment(conn, args.task, args.note)
         conn.commit()
     print(json.dumps({'id': args.task, 'old_status': task['status'], 'new_status': args.status}))
 
@@ -835,10 +849,7 @@ def cmd_task_comment_list(args):
     with connect() as conn:
         init_db(conn)
         require_task(conn, args.task)
-        rows = [dict(r) for r in conn.execute(
-            'SELECT id, task_id, comment_type, body, author, created_at, updated_at FROM task_comments WHERE task_id=? ORDER BY created_at ASC, id ASC',
-            (args.task,),
-        )]
+        rows = get_task_comments(conn, args.task)
     print_rows(rows, table=args.table)
 
 
@@ -912,10 +923,7 @@ def cmd_task_update(args):
             (parent_task_id, title, description, priority, assignee, due_at, board, column_key, wip_order, sort_order, args.task),
         )
         if args.note:
-            conn.execute(
-                "INSERT INTO task_comments(task_id, comment_type, body, author) VALUES (?, 'system', ?, ?)",
-                (args.task, args.note, 'workctl'),
-            )
+            add_task_system_comment(conn, args.task, args.note)
         conn.commit()
     print(json.dumps({'id': args.task, 'title': title, 'priority': priority, 'board': board, 'column_key': column_key}))
 
@@ -928,23 +936,13 @@ def cmd_task_move(args):
         column_key = args.column_key if args.column_key is not None else task['column_key']
         wip_order = args.wip_order if args.wip_order is not None else task['wip_order']
         status = args.status if args.status is not None else task['status']
-        started_at = task['started_at']
-        completed_at = task['completed_at']
-        if status == 'in_progress' and not started_at:
-            started_at = now_iso()
-        if status == 'done':
-            completed_at = args.completed_at or now_iso()
-            if not started_at:
-                started_at = completed_at
+        started_at, completed_at = apply_task_status_transition(task, status, args.completed_at)
         conn.execute(
             'UPDATE tasks SET board=?, column_key=?, wip_order=?, status=?, started_at=?, completed_at=? WHERE id=?',
             (board, column_key, wip_order, status, started_at, completed_at, args.task),
         )
         if args.note:
-            conn.execute(
-                "INSERT INTO task_comments(task_id, comment_type, body, author) VALUES (?, 'system', ?, ?)",
-                (args.task, args.note, 'workctl'),
-            )
+            add_task_system_comment(conn, args.task, args.note)
         conn.commit()
     print(json.dumps({'id': args.task, 'board': board, 'column_key': column_key, 'wip_order': wip_order, 'status': status}))
 
@@ -957,10 +955,7 @@ def cmd_task_archive(args):
         task = require_task(conn, args.task)
         conn.execute("UPDATE tasks SET status='archived' WHERE id=?", (args.task,))
         note = args.note or 'Task archived'
-        conn.execute(
-            "INSERT INTO task_comments(task_id, comment_type, body, author) VALUES (?, 'system', ?, ?)",
-            (args.task, note, 'workctl'),
-        )
+        add_task_system_comment(conn, args.task, note)
         conn.commit()
     print(json.dumps({'id': args.task, 'old_status': task['status'], 'new_status': 'archived'}))
 
@@ -972,10 +967,7 @@ def cmd_task_unarchive(args):
         new_status = args.status or 'todo'
         conn.execute('UPDATE tasks SET status=? WHERE id=?', (new_status, args.task))
         note = args.note or f'Task unarchived to {new_status}'
-        conn.execute(
-            "INSERT INTO task_comments(task_id, comment_type, body, author) VALUES (?, 'system', ?, ?)",
-            (args.task, note, 'workctl'),
-        )
+        add_task_system_comment(conn, args.task, note)
         conn.commit()
     print(json.dumps({'id': args.task, 'old_status': task['status'], 'new_status': new_status}))
 

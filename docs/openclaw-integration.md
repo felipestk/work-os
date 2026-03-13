@@ -9,45 +9,38 @@ After `scripts/install.sh`, the target host should have:
 - runtime data under `~/.openclaw/workspace`
 - skill installed at `~/.openclaw/workspace/skills/work-os/`
 
-## Required AGENTS.md integration
-The receiving OpenClaw host should also add the Work OS policy block to its `AGENTS.md`.
-
-Use the exact block from:
+## Required host integration
+The receiving OpenClaw host should also apply:
 - `docs/agents-policy-snippet.md`
-
-This matters because installation alone gives the host:
-- the toolkit
-- the skill
-- the runtime paths
-
-But the `AGENTS.md` rule is what makes customer-linked project tracking a mandatory behavior.
-
-## Recommended TOOLS.md integration
-The receiving OpenClaw host should also add the Work OS tooling reference block to its `TOOLS.md`.
-
-Use the exact block from:
 - `docs/tools-snippet.md`
 
-This gives the host a local command reference that matches the installed `workctl` workflow.
+Why:
+- install alone gives the host the toolkit + skill
+- AGENTS/TOOLS integration tells the host when and how to actually use it
 
-## Recommended short AGENTS.md skill entry
-If the receiving host keeps a short installed-skills list, add a line like:
+## Recommended AGENTS.md positioning
+The host should treat Work OS as the preferred system when work has:
+- customer context
+- continuity over time
+- PR-coded project tracking
+- offer/commercial scope
+- important communications or decisions
+- explicit task/board needs
 
-```md
-## Installed Skills
-- **work-os**: Unified customer, project, offer, and activity workflow for tracked work via `workctl`. Use when work should be linked to customers, PR-coded projects, offers, or activity timelines instead of being handled as untracked ad-hoc work.
+## Important behavioral note
+Tasks are an optional extension layer.
+The default behavioral model should still prioritize:
+1. customer
+2. project
+3. project event
+4. offer
+5. activity
+
+Only use tasks when explicit task tracking or kanban workflows are wanted.
+
+## Suggested install validation on the target host
+```bash
+source ~/.local/share/openclaw-workos/env.sh
+workctl doctor
+tests/smoke.sh
 ```
-
-## Optional stronger behavioral nudge
-If desired, also add:
-
-```md
-When work has continuity, client context, pricing, project tracking, or operational follow-up needs, prefer the `work-os` skill and `workctl` workflow over ad-hoc notes or untracked files.
-```
-
-## Why this matters
-OpenClaw uses skills more reliably when both are true:
-1. the skill exists in a discoverable path
-2. the host instructions clearly reinforce when it should be used
-
-The goal is to make `work-os` both installed and behaviorally adopted.

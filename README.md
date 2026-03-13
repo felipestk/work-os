@@ -9,8 +9,9 @@ This repo contains:
 - install/bootstrap scripts
 - generic demo/test fixture data
 - skill packaging helper
+- install/integration/handoff docs
 
-Current status: working early prototype based on PR0083 planning.
+Current status: working prototype from PR0083 with optional task + board support.
 
 ## What Work OS manages
 ### Default model
@@ -28,14 +29,14 @@ Current status: working early prototype based on PR0083 planning.
 - task comments
 - shared attachments
 - minimal kanban fields on tasks (`board`, `column_key`, `wip_order`)
-- task update/move helpers
+- task board view
 - archive/unarchive task lifecycle
-- attachment show/remove helpers
-- enriched project inspection with optional linked tasks/attachments
+- attachment management
+- enriched project inspection and task-aware project filters
 
 ## Task policy
 Tasks are intentionally optional.
-Archived tasks are retained and hidden from task lists by default.
+Archived tasks are retained and hidden from normal task lists/board views by default.
 There is no hard delete flow for tasks.
 
 The default Work OS workflow is still:
@@ -45,18 +46,23 @@ The default Work OS workflow is still:
 - offer
 - activity
 
-Use tasks only when explicit task tracking or board/kanban workflows are needed.
-
-## Attachment policy
-Use the shared attachment model to connect files to tasks, projects, offers, and other supported entities.
-Attachment management includes add/list/show/remove flows.
-
-## Repo-local demo/testing
+## Quick start
 ```bash
-scripts/bootstrap.sh
-bin/workctl doctor
+git clone https://github.com/felipestk/work-os.git openclaw-workos
+cd openclaw-workos
+scripts/install.sh
+source ~/.local/share/openclaw-workos/env.sh
+workctl doctor
 tests/smoke.sh
 ```
+
+## Docs
+- `docs/install.md`
+- `docs/openclaw-integration.md`
+- `docs/handoff-message.md`
+- `docs/usage.md`
+- `docs/cli.md`
+- `docs/testing.md`
 
 ## License
 MIT
