@@ -318,6 +318,32 @@ document.addEventListener('click', (event) => {
   if (!insidePicker) closeAllPickers();
 });
 
+document.body.addEventListener('htmx:beforeRequest', (event) => {
+  const form = event.detail.elt?.closest('form');
+  if (!form) return;
+  const submitter = event.detail.requestConfig?.elt?.closest('button[type="submit"], input[type="submit"]') || form.querySelector('button[type="submit"], input[type="submit"]');
+  if (!submitter) return;
+  submitter.dataset.originalLabel = submitter.textContent || submitter.value || '';
+  submitter.disabled = true;
+  if (submitter.tagName === 'BUTTON') submitter.textContent = 'Working…';
+  if (submitter.tagName === 'INPUT') submitter.value = 'Working…';
+});
+
+document.body.addEventListener('htmx:afterRequest', (event) => {
+  const form = event.detail.elt?.closest('form');
+  if (!form) return;
+  const submitters = form.querySelectorAll('button[type="submit"], input[type="submit"]');
+  submitters.forEach((submitter) => {
+    submitter.disabled = false;
+    const label = submitter.dataset.originalLabel;
+    if (label) {
+      if (submitter.tagName === 'BUTTON') submitter.textContent = label;
+      if (submitter.tagName === 'INPUT') submitter.value = label;
+      delete submitter.dataset.originalLabel;
+    }
+  });
+});
+
 document.body.addEventListener('htmx:afterSwap', (event) => {
   const target = event.detail.target;
   if (target && target.matches && target.matches('[data-detail-panel]')) openDrawer();

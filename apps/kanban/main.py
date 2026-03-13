@@ -64,7 +64,7 @@ def render_board_response(request: Request, filters: dict[str, str] | None = Non
     return templates.TemplateResponse(request, template, board_context(request, filters))
 
 
-def task_detail_context(request: Request, task_id: int):
+def task_detail_context(request: Request, task_id: int, error: str = ''):
     task = get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail='task not found')
@@ -74,6 +74,7 @@ def task_detail_context(request: Request, task_id: int):
         'columns': COLUMNS,
         'projects': list_projects(),
         'priority_options': PRIORITY_OPTIONS,
+        'error': error,
     }
 
 
@@ -153,11 +154,11 @@ def board_task_archive(request: Request, task_id: int):
 @app.post('/board/tasks/{task_id}/update', response_class=HTMLResponse)
 def board_task_update(request: Request, task_id: int, title: str = Form(...), description: str = Form(''), project_id: str = Form(''), priority: str = Form(''), assignee: str = Form(''), due_at: str = Form('')):
     if not title.strip():
-        raise HTTPException(status_code=400, detail='title is required')
+        return templates.TemplateResponse(request, 'partials/task_detail.html', task_detail_context(request, task_id, error='Title is required.'), status_code=400)
     try:
         update_task(task_id, title=title, description=description, project_id=project_id.strip(), priority=priority, assignee=assignee, due_at=due_at)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return templates.TemplateResponse(request, 'partials/task_detail.html', task_detail_context(request, task_id, error=str(exc)), status_code=400)
     return templates.TemplateResponse(request, 'partials/task_detail.html', task_detail_context(request, task_id))
 
 
@@ -166,7 +167,7 @@ def board_task_comment_create(request: Request, task_id: int, body: str = Form('
     try:
         add_task_comment(task_id, body=body, author=author)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return templates.TemplateResponse(request, 'partials/task_detail.html', task_detail_context(request, task_id, error=str(exc)), status_code=400)
     return templates.TemplateResponse(request, 'partials/task_detail.html', task_detail_context(request, task_id))
 
 
@@ -174,10 +175,10 @@ def board_task_comment_create(request: Request, task_id: int, body: str = Form('
 async def board_task_attachment_create(request: Request, task_id: int, upload_file: UploadFile | None = File(None)):
     try:
         if not upload_file or not upload_file.filename:
-            raise HTTPException(status_code=400, detail='file upload is required')
+            return templates.TemplateResponse(request, 'partials/task_detail.html', task_detail_context(request, task_id, error='Please choose a file to upload.'), status_code=400)
         create_uploaded_task_attachment(task_id, filename=upload_file.filename, source=upload_file.file, mime_type=upload_file.content_type)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return templates.TemplateResponse(request, 'partials/task_detail.html', task_detail_context(request, task_id, error=str(exc)), status_code=400)
     finally:
         if upload_file is not None:
             await upload_file.close()
@@ -189,7 +190,7 @@ def board_task_attachment_remove(request: Request, task_id: int, attachment_id: 
     try:
         remove_task_attachment(task_id, attachment_id)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return templates.TemplateResponse(request, 'partials/task_detail.html', task_detail_context(request, task_id, error=str(exc)), status_code=400)
     return templates.TemplateResponse(request, 'partials/task_detail.html', task_detail_context(request, task_id))
 
 

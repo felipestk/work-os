@@ -32,10 +32,23 @@ client = TestClient(app)
 assert client.get('/board').status_code == 200
 assert client.get('/tasks/1').status_code == 200
 assert client.get('/board', params={'project_id': 'PR0002'}).status_code == 200
+assert client.get('/board/projects/search', params={'q': 'PR0002'}).status_code == 200
+assert client.get('/board/customers/search', params={'q': 'Northwind'}).status_code == 200
+assert client.get('/board/project-create', params={'origin': 'quick-add', 'target': 'project_id'}).status_code == 200
+assert client.post('/board/project-create', data={'customer_name': 'Regression Customer', 'project_title': 'Regression Project', 'origin': 'quick-add', 'target': 'project_id'}).status_code == 200
 
 assert client.post('/board/tasks/1/comments', data={'body': 'hello', 'author': 'me'}).status_code == 200
-assert client.post('/board/tasks/1/comments', data={'body': '', 'author': 'me'}).status_code == 400
-assert client.post('/board/tasks/1/attachments', files={'upload_file': ('x.txt', io.BytesIO(b'hi'), 'text/plain')}).status_code == 200
+bad_comment = client.post('/board/tasks/1/comments', data={'body': '', 'author': 'me'})
+assert bad_comment.status_code == 400
+assert 'comment body is required' in bad_comment.text
+
+bad_upload = client.post('/board/tasks/1/attachments', data={})
+assert bad_upload.status_code == 400
+assert 'Please choose a file to upload.' in bad_upload.text
+
+good_upload = client.post('/board/tasks/1/attachments', files={'upload_file': ('x.txt', io.BytesIO(b'hi'), 'text/plain')})
+assert good_upload.status_code == 200
+assert '📄' in good_upload.text
 
 attachment = get_task(1)['attachments'][0]
 assert client.get(f"/board/tasks/1/attachments/{attachment['id']}/download").status_code == 200

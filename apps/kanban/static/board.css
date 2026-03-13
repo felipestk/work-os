@@ -73,6 +73,7 @@ input, textarea, button, select { width: 100%; font: inherit; border: 1px solid 
 input:focus, textarea:focus, button:focus, select:focus { outline: none; border-color: var(--border-strong); }
 textarea { resize: vertical; }
 button { cursor: pointer; }
+button[disabled] { cursor: wait; opacity: 0.6; }
 .picker-field { position: relative; }
 .picker-results { position: relative; }
 .picker-results-card { position: absolute; left: 0; right: 0; top: 4px; background: var(--panel); border: 1px solid var(--border-strong); z-index: 10; }
@@ -118,6 +119,7 @@ button:hover, .secondary-button:hover, .ghost-button:hover, .column-add-toggle:h
 .detail-card, .modal-card { padding: 28px 28px 36px; }
 .detail-placeholder { color: var(--soft); padding: 32px 28px; }
 .detail-header, .modal-header { display: flex; justify-content: space-between; gap: 18px; align-items: start; padding-bottom: 24px; border-bottom: 1px solid var(--border); }
+.detail-error { margin-top: 18px; padding: 12px 14px; border: 1px solid rgba(204,0,0,0.22); background: var(--accent-soft); color: var(--accent); font-size: 13px; }
 .detail-summary-card { margin-top: 22px; padding: 18px 18px 16px; border: 1px solid var(--border); background: var(--panel-soft); }
 .detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 18px; }
 .detail-grid dt { color: var(--soft); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.06em; }

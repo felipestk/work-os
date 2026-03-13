@@ -473,6 +473,30 @@ def human_attachment_name(path_or_name: str) -> str:
     return cleaned or file_name or 'attachment'
 
 
+def attachment_icon(file_name: str, mime_type: str | None = None) -> str:
+    name = (file_name or '').lower()
+    mime = (mime_type or '').lower()
+    if mime.startswith('image/') or name.endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg')):
+        return '🖼️'
+    if mime == 'application/pdf' or name.endswith('.pdf'):
+        return '📕'
+    if mime.startswith('audio/') or name.endswith(('.mp3', '.wav', '.m4a', '.ogg')):
+        return '🎵'
+    if mime.startswith('video/') or name.endswith(('.mp4', '.mov', '.webm', '.mkv')):
+        return '🎬'
+    if any(name.endswith(ext) for ext in ('.zip', '.tar', '.gz', '.tgz', '.rar', '.7z')):
+        return '🗜️'
+    if any(name.endswith(ext) for ext in ('.doc', '.docx', '.pages', '.odt')):
+        return '📝'
+    if any(name.endswith(ext) for ext in ('.xls', '.xlsx', '.csv', '.ods')):
+        return '📊'
+    if any(name.endswith(ext) for ext in ('.ppt', '.pptx', '.key')):
+        return '📽️'
+    if any(name.endswith(ext) for ext in ('.txt', '.md', '.rtf', '.log')):
+        return '📄'
+    return '📎'
+
+
 def task_attachment_dir(conn: sqlite3.Connection, task_id: int) -> Path:
     row = conn.execute(
         '''
@@ -606,6 +630,7 @@ def get_task_attachment(task_id: int, attachment_id: int) -> dict[str, Any] | No
     attachment_path = Path(attachment['file_path'])
     attachment['file_name'] = attachment_path.name or attachment['file_path']
     attachment['download_name'] = human_attachment_name(attachment['file_name'])
+    attachment['icon'] = attachment_icon(attachment['download_name'], attachment.get('mime_type'))
     return attachment
 
 
@@ -636,4 +661,5 @@ def get_task(task_id: int) -> dict[str, Any] | None:
             attachment_path = Path(attachment['file_path'])
             attachment['file_name'] = attachment_path.name or attachment['file_path']
             attachment['download_name'] = human_attachment_name(attachment['file_name'])
+            attachment['icon'] = attachment_icon(attachment['download_name'], attachment.get('mime_type'))
         return task

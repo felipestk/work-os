@@ -8,6 +8,10 @@
     <button class="detail-close secondary-button" type="button" data-detail-close>Close</button>
   </div>
 
+  {% if error %}
+    <div class="detail-error" role="alert">{{ error }}</div>
+  {% endif %}
+
   <section class="detail-summary-card">
     <dl class="detail-grid">
       <div><dt>column</dt><dd>{{ task.column_label }}</dd></div>
@@ -133,7 +137,7 @@
           <li>
             <div class="attachment-row">
               <a class="attachment-link" href="/board/tasks/{{ task.id }}/attachments/{{ attachment.id }}/download">
-                <span class="attachment-icon" aria-hidden="true">📄</span>
+                <span class="attachment-icon" aria-hidden="true">{{ attachment.icon }}</span>
                 <span class="attachment-copy">
                   <span class="attachment-name">{{ attachment.download_name }}</span>
                   <span class="attachment-meta">{{ attachment.created_at }}</span>
