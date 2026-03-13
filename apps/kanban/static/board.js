@@ -59,6 +59,17 @@ function closeProjectModal(reset = true) {
   if (reset && panel) panel.innerHTML = '';
 }
 
+function clearResults(container) {
+  if (container) container.innerHTML = '';
+}
+
+function closeAllPickers(except = null) {
+  document.querySelectorAll('[data-project-picker-results], [data-customer-picker-results]').forEach((el) => {
+    if (except && el === except) return;
+    clearResults(el);
+  });
+}
+
 function toggleQuickAdd(columnKey, open) {
   const form = document.querySelector(`[data-quick-add-form="${columnKey}"]`);
   const button = document.querySelector(`[data-quick-add-toggle="${columnKey}"]`);
@@ -99,6 +110,7 @@ function runProjectSearch(input) {
   const searchUrl = input.dataset.searchUrl;
   if (!results || !searchUrl) return;
   const q = input.value || '';
+  closeAllPickers(results);
   debounceSearch(input, () => fetchInto(`${searchUrl}?q=${encodeURIComponent(q)}`, results));
 }
 
@@ -108,6 +120,7 @@ function runCustomerSearch(input) {
   const searchUrl = input.dataset.searchUrl;
   if (!results || !searchUrl) return;
   const q = input.value || '';
+  closeAllPickers(results);
   debounceSearch(input, () => fetchInto(`${searchUrl}?q=${encodeURIComponent(q)}`, results));
 }
 
@@ -119,7 +132,7 @@ function applyProjectSelection(button) {
   const results = picker.querySelector('[data-project-picker-results]');
   if (hidden) hidden.value = button.dataset.projectId || '';
   if (input) input.value = button.dataset.projectLabel || '';
-  if (results) results.innerHTML = '';
+  clearResults(results);
 }
 
 function applyCustomerSelection(button) {
@@ -128,7 +141,7 @@ function applyCustomerSelection(button) {
   const input = form.querySelector('input[name="customer_name"]');
   const results = form.querySelector('[data-customer-picker-results]');
   if (input) input.value = button.dataset.customerName || '';
-  if (results) results.innerHTML = '';
+  clearResults(results);
 }
 
 function applyCustomerQuery(button) {
@@ -137,7 +150,7 @@ function applyCustomerQuery(button) {
   const input = form.querySelector('input[name="customer_name"]');
   const results = form.querySelector('[data-customer-picker-results]');
   if (input) input.value = button.dataset.customerQuery || '';
-  if (results) results.innerHTML = '';
+  clearResults(results);
 }
 
 function openProjectCreateFromPicker(button) {
@@ -148,6 +161,7 @@ function openProjectCreateFromPicker(button) {
   const query = button.dataset.projectQuery || '';
   const panel = getProjectModalPanel();
   if (!panel) return;
+  clearResults(picker.querySelector('[data-project-picker-results]'));
   window.htmx.ajax('GET', `/board/project-create?origin=${encodeURIComponent(origin)}&target=${encodeURIComponent(target)}`, { target: panel, swap: 'innerHTML' });
   openProjectModal();
   setTimeout(() => {
@@ -172,7 +186,7 @@ function consumeCreatedProject(payload) {
     const input = picker.querySelector('[data-project-picker-input]');
     const results = picker.querySelector('[data-project-picker-results]');
     if (input) input.value = projectLabel;
-    if (results) results.innerHTML = '';
+    clearResults(results);
   }
   closeProjectModal();
 }
@@ -224,6 +238,9 @@ document.addEventListener('click', (event) => {
 
   const modalBackdrop = event.target.closest('[data-project-modal-backdrop]');
   if (modalBackdrop) return closeProjectModal();
+
+  const insidePicker = event.target.closest('[data-project-picker], [data-customer-picker-results], [data-project-modal]');
+  if (!insidePicker) closeAllPickers();
 });
 
 document.body.addEventListener('htmx:afterSwap', (event) => {
@@ -241,5 +258,6 @@ document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
     closeDrawer(false);
     closeProjectModal(false);
+    closeAllPickers();
   }
 });
