@@ -10,6 +10,7 @@ CUSTOMERS_ROOT="${WORKCTL_CUSTOMERS_ROOT:-$WORKSPACE_DIR/work/customers}"
 rm -f "$DB_PATH"
 rm -rf "$PROJECTS_ROOT" "$CUSTOMERS_ROOT"
 mkdir -p "$ROOT_DIR/tmp"
+trap 'rm -rf "$ROOT_DIR/tmp"' EXIT
 printf 'smoke attachment\n' > "$ROOT_DIR/tmp/attachment.txt"
 
 OPENCLAW_WORKSPACE="$WORKSPACE_DIR" \
