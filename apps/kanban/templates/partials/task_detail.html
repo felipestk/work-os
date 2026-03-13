@@ -117,11 +117,34 @@
 
   <section class="detail-section">
     <p class="section-kicker">Attachments</p>
+    <form class="detail-attachment-form" hx-post="/board/tasks/{{ task.id }}/attachments" hx-target="[data-detail-panel]" hx-swap="innerHTML">
+      <label>
+        <span>File path or URL</span>
+        <input type="text" name="file_path" placeholder="/root/.openclaw/workspace/path/to/file.txt or https://..." required>
+      </label>
+      <label>
+        <span>MIME type</span>
+        <input type="text" name="mime_type" placeholder="text/plain">
+      </label>
+      <div class="detail-edit-actions">
+        <button type="submit" class="secondary-button">Add attachment</button>
+      </div>
+    </form>
     <div class="detail-body-block">
       {% if task.attachments %}
         <ul class="detail-list monospace attachment-list">
         {% for attachment in task.attachments %}
-          <li>{{ attachment.file_path }}</li>
+          <li>
+            <div class="attachment-row">
+              <div class="attachment-copy">
+                <span class="attachment-path">{{ attachment.file_path }}</span>
+                <span class="attachment-meta">{{ attachment.mime_type or 'unknown type' }} · {{ attachment.created_at }}</span>
+              </div>
+              <form hx-post="/board/tasks/{{ task.id }}/attachments/{{ attachment.id }}/remove" hx-target="[data-detail-panel]" hx-swap="innerHTML">
+                <button type="submit" class="ghost-button">remove</button>
+              </form>
+            </div>
+          </li>
         {% endfor %}
         </ul>
       {% else %}

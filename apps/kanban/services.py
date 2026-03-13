@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import sqlite3
@@ -446,6 +447,72 @@ def add_task_comment(task_id: int, *, body: str, author: str | None = None, comm
         )
         conn.commit()
         return int(cur.lastrowid)
+
+
+def file_checksum(file_path: Path) -> str:
+    digest = hashlib.sha256()
+    with file_path.open('rb') as handle:
+        for chunk in iter(lambda: handle.read(65536), b''):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def add_task_attachment(task_id: int, *, file_path: str, mime_type: str | None = None) -> int:
+    raw_path = (file_path or '').strip()
+    cleaned_mime_type = (mime_type or '').strip() or None
+    if not raw_path:
+        raise ValueError('attachment path or URL is required')
+
+    resolved_path = raw_path
+    checksum = None
+    if re.match(r'^https?://', raw_path, re.IGNORECASE):
+        resolved_path = raw_path
+    else:
+        local_path = Path(raw_path).expanduser()
+        if not local_path.is_absolute():
+            local_path = (DEFAULT_WORKSPACE / local_path).resolve()
+        else:
+            local_path = local_path.resolve()
+        if not local_path.exists() or not local_path.is_file():
+            raise ValueError(f'File not found: {local_path}')
+        resolved_path = str(local_path)
+        checksum = file_checksum(local_path)
+
+    with connect() as conn:
+        init_db(conn)
+        task = conn.execute('SELECT id FROM tasks WHERE id = ?', (task_id,)).fetchone()
+        if not task:
+            raise ValueError(f'Unknown task: {task_id}')
+        cur = conn.execute(
+            'INSERT INTO attachments(entity_type, entity_ref, file_path, mime_type, checksum) VALUES (?, ?, ?, ?, ?)',
+            ('task', str(task_id), resolved_path, cleaned_mime_type, checksum),
+        )
+        conn.execute(
+            "INSERT INTO task_comments(task_id, comment_type, body, author) VALUES (?, 'system', ?, 'kanban')",
+            (task_id, f'Attachment added: {resolved_path}'),
+        )
+        conn.commit()
+        return int(cur.lastrowid)
+
+
+def remove_task_attachment(task_id: int, attachment_id: int) -> None:
+    with connect() as conn:
+        init_db(conn)
+        task = conn.execute('SELECT id FROM tasks WHERE id = ?', (task_id,)).fetchone()
+        if not task:
+            raise ValueError(f'Unknown task: {task_id}')
+        attachment = conn.execute(
+            "SELECT id, file_path FROM attachments WHERE id = ? AND entity_type='task' AND entity_ref = ?",
+            (attachment_id, str(task_id)),
+        ).fetchone()
+        if not attachment:
+            raise ValueError(f'Unknown task attachment: {attachment_id}')
+        conn.execute('DELETE FROM attachments WHERE id = ?', (attachment_id,))
+        conn.execute(
+            "INSERT INTO task_comments(task_id, comment_type, body, author) VALUES (?, 'system', ?, 'kanban')",
+            (task_id, f"Attachment removed: {attachment['file_path']}"),
+        )
+        conn.commit()
 
 
 def get_task(task_id: int) -> dict[str, Any] | None:

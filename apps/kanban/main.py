@@ -9,6 +9,7 @@ from .services import (
     BOARD_NAME,
     COLUMNS,
     PRIORITY_OPTIONS,
+    add_task_attachment,
     add_task_comment,
     archive_task,
     build_filters,
@@ -19,6 +20,7 @@ from .services import (
     list_board_tasks,
     list_projects,
     move_task,
+    remove_task_attachment,
     search_customers,
     search_projects,
     update_task,
@@ -162,6 +164,24 @@ def board_task_update(request: Request, task_id: int, title: str = Form(...), de
 def board_task_comment_create(request: Request, task_id: int, body: str = Form(...), author: str = Form('')):
     try:
         add_task_comment(task_id, body=body, author=author)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return templates.TemplateResponse(request, 'partials/task_detail.html', task_detail_context(request, task_id))
+
+
+@app.post('/board/tasks/{task_id}/attachments', response_class=HTMLResponse)
+def board_task_attachment_create(request: Request, task_id: int, file_path: str = Form(...), mime_type: str = Form('')):
+    try:
+        add_task_attachment(task_id, file_path=file_path, mime_type=mime_type)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return templates.TemplateResponse(request, 'partials/task_detail.html', task_detail_context(request, task_id))
+
+
+@app.post('/board/tasks/{task_id}/attachments/{attachment_id}/remove', response_class=HTMLResponse)
+def board_task_attachment_remove(request: Request, task_id: int, attachment_id: int):
+    try:
+        remove_task_attachment(task_id, attachment_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return templates.TemplateResponse(request, 'partials/task_detail.html', task_detail_context(request, task_id))
