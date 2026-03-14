@@ -162,10 +162,6 @@ Recommended canonical command:
 uvicorn apps.kanban.main:app --host 0.0.0.0 --port 8010
 ```
 
-## Automation roadmap reference
-For the proposed OpenClaw execution workflow tied to board movement and review states, see:
-- `docs/kanban-automation.md`
-
 ## Current maturity
 Treat the app as:
 - usable internal v1

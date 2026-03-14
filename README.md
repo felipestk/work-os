@@ -93,7 +93,6 @@ Then open `http://127.0.0.1:8010/board`.
 - `docs/cli.md`
 - `docs/testing.md`
 - `docs/kanban.md`
-- `docs/kanban-automation.md`
 
 ## License
 MIT
